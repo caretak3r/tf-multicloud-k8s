@@ -1,0 +1,26 @@
+# Example terraform.tfvars - copy and customize for your environment
+
+# Choose cloud provider: "azure" or "aws"
+cloud_provider = "azure"
+
+# Cluster configuration
+cluster_name = "my-k8s-cluster"
+environment  = "dev"
+
+# Node size configuration: "small", "medium", or "large"
+node_size_config = "small"
+
+# Azure-specific variables (only needed when cloud_provider = "azure")
+resource_group_name = "my-k8s-rg"
+location           = "East US"
+
+# AWS-specific variables (only needed when cloud_provider = "aws")
+aws_region = "us-east-1"
+
+# Common tags
+tags = {
+  Environment = "dev"
+  Project     = "kubernetes-cluster"
+  Team        = "devops"
+  Owner       = "your-team@company.com"
+}
