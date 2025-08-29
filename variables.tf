@@ -8,7 +8,7 @@ variable "cloud_provider" {
 }
 
 variable "cluster_name" {
-  description = "Name of the Kubernetes cluster"
+  description = "Name of the cluster (Kubernetes EKS or ECS)"
   type        = string
 }
 

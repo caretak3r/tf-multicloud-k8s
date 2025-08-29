@@ -97,13 +97,51 @@ output "bastion_session_manager_command" {
   value       = var.enable_bastion ? module.bastion[0].session_manager_command : "Bastion host not enabled"
 }
 
+# ECS Outputs
+output "ecs_cluster_id" {
+  description = "ECS cluster ID"
+  value       = var.enable_ecs ? module.ecs[0].cluster_id : null
+}
+
+output "ecs_cluster_arn" {
+  description = "ECS cluster ARN"
+  value       = var.enable_ecs ? module.ecs[0].cluster_arn : null
+}
+
+output "ecs_service_name" {
+  description = "ECS service name"
+  value       = var.enable_ecs ? aws_ecs_service.main_with_alb[0].name : null
+}
+
+output "alb_dns_name" {
+  description = "ALB DNS name for ECS service"
+  value       = var.enable_ecs ? module.alb[0].alb_dns_name : null
+}
+
+output "alb_zone_id" {
+  description = "ALB zone ID for ECS service"
+  value       = var.enable_ecs ? module.alb[0].alb_zone_id : null
+}
+
+output "ecs_certificate_arn" {
+  description = "ARN of certificate used for ECS (either provided or self-signed)"
+  value       = var.enable_ecs ? module.ecs[0].certificate_arn : null
+}
+
+output "secrets_endpoint" {
+  description = "Internal endpoint for accessing secrets from ECS containers"
+  value       = var.enable_ecs ? module.ecs[0].secrets_endpoint : null
+}
+
 # Security Information
 output "security_notes" {
   description = "Important security information about the deployment"
   value = {
     eks_private_access_only = var.enable_eks ? "EKS cluster has private endpoint access only" : "EKS not deployed"
+    ecs_fargate_secure      = var.enable_ecs ? "ECS running on Fargate with secure defaults" : "ECS not deployed"
     vpc_endpoints_enabled   = var.enable_vpc_endpoints ? "VPC endpoints enabled for private AWS API access" : "VPC endpoints disabled"
     bastion_required        = var.enable_eks && !var.enable_bastion ? "Bastion host or VPN required to access EKS cluster" : "Access configured"
     nat_gateway_enabled     = var.enable_nat_gateway ? "NAT Gateway enabled for outbound internet access" : "No outbound internet access from private subnets"
+    waf_enabled            = var.enable_ecs && var.ecs_enable_waf ? "AWS WAF enabled for ECS ALB protection" : "WAF protection disabled or ECS not deployed"
   }
 }

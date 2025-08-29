@@ -32,6 +32,12 @@ variable "enable_eks" {
   default     = true
 }
 
+variable "enable_ecs" {
+  description = "Whether to create ECS cluster and services"
+  type        = bool
+  default     = false
+}
+
 variable "enable_bastion" {
   description = "Whether to create bastion host"
   type        = bool
@@ -159,6 +165,130 @@ variable "log_retention_in_days" {
   description = "CloudWatch log retention in days"
   type        = number
   default     = 7
+}
+
+# ECS Configuration Variables
+variable "ecs_container_image" {
+  description = "Docker image for the ECS application container"
+  type        = string
+  default     = "nginx:latest"
+}
+
+variable "ecs_container_port" {
+  description = "Port exposed by the ECS application container"
+  type        = number
+  default     = 8000
+}
+
+variable "ecs_secrets_sidecar_image" {
+  description = "Docker image for the secrets manager sidecar"
+  type        = string
+  default     = "secrets-sidecar:latest"
+}
+
+variable "ecs_task_cpu" {
+  description = "CPU units for the ECS task (256, 512, 1024, 2048, 4096)"
+  type        = number
+  default     = 512
+  validation {
+    condition     = contains([256, 512, 1024, 2048, 4096], var.ecs_task_cpu)
+    error_message = "ECS task CPU must be one of: 256, 512, 1024, 2048, 4096."
+  }
+}
+
+variable "ecs_task_memory" {
+  description = "Memory (MB) for the ECS task"
+  type        = number
+  default     = 1024
+}
+
+variable "ecs_desired_count" {
+  description = "Desired number of ECS tasks"
+  type        = number
+  default     = 2
+}
+
+variable "ecs_environment_variables" {
+  description = "List of environment variables for the ECS main container"
+  type = list(object({
+    name  = string
+    value = string
+  }))
+  default = []
+}
+
+variable "ecs_secrets" {
+  description = "Map of secrets to store in AWS Secrets Manager for ECS"
+  type        = map(string)
+  default     = {}
+  sensitive   = true
+}
+
+variable "ecs_secrets_prefix" {
+  description = "Prefix for ECS secrets in AWS Secrets Manager"
+  type        = string
+  default     = ""
+}
+
+variable "ecs_acm_certificate_arn" {
+  description = "ARN of existing ACM certificate for ECS ALB (if null, self-signed certificate will be created)"
+  type        = string
+  default     = null
+}
+
+variable "ecs_create_self_signed_cert" {
+  description = "Whether to create self-signed certificate for ECS when ACM certificate ARN is not provided"
+  type        = bool
+  default     = true
+}
+
+variable "ecs_domain_name" {
+  description = "Domain name for ECS self-signed certificate (defaults to cluster_name.local)"
+  type        = string
+  default     = null
+}
+
+# ALB Configuration Variables for ECS
+variable "ecs_health_check_path" {
+  description = "Health check path for ECS ALB target group"
+  type        = string
+  default     = "/health"
+}
+
+variable "ecs_internal_alb" {
+  description = "Whether the ECS ALB should be internal (private)"
+  type        = bool
+  default     = false
+}
+
+variable "ecs_allowed_cidr_blocks" {
+  description = "List of CIDR blocks allowed to access the ECS ALB"
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+}
+
+variable "ecs_ssl_policy" {
+  description = "SSL policy for ECS HTTPS listener"
+  type        = string
+  default     = "ELBSecurityPolicy-TLS-1-2-2017-01"
+}
+
+variable "ecs_enable_deletion_protection" {
+  description = "Enable deletion protection for ECS ALB"
+  type        = bool
+  default     = false
+}
+
+variable "ecs_enable_waf" {
+  description = "Enable AWS WAF for ECS ALB"
+  type        = bool
+  default     = true
+}
+
+variable "ecs_rate_limit_per_5min" {
+  description = "Rate limit per IP per 5 minutes for ECS WAF"
+  type        = number
+  default     = 2000
 }
 
 variable "tags" {

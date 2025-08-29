@@ -98,3 +98,100 @@ module "eks" {
 
   depends_on = [module.vpc, module.bastion]
 }
+
+# ECS Module (creates cluster, certificates, and tasks)
+module "ecs" {
+  source = "./ecs"
+  count  = var.enable_ecs ? 1 : 0
+
+  cluster_name              = var.cluster_name
+  vpc_id                    = local.vpc_id
+  private_subnet_ids        = local.private_subnet_ids
+  region                    = var.region
+  container_image           = var.ecs_container_image
+  container_port            = var.ecs_container_port
+  secrets_sidecar_image     = var.ecs_secrets_sidecar_image
+  task_cpu                  = var.ecs_task_cpu
+  task_memory               = var.ecs_task_memory
+  desired_count             = var.ecs_desired_count
+  environment_variables     = var.ecs_environment_variables
+  secrets                   = var.ecs_secrets
+  secrets_prefix            = var.ecs_secrets_prefix
+  acm_certificate_arn       = var.ecs_acm_certificate_arn
+  create_self_signed_cert   = var.ecs_create_self_signed_cert
+  domain_name               = var.ecs_domain_name
+  alb_security_group_ids    = []  # Will be updated after ALB creation
+  target_group_arn          = null  # Will be updated after ALB creation
+  log_retention_in_days     = var.log_retention_in_days
+
+  tags = var.tags
+
+  depends_on = [module.vpc]
+}
+
+# Application Load Balancer Module (for ECS)
+module "alb" {
+  source = "./alb"
+  count  = var.enable_ecs ? 1 : 0
+
+  cluster_name              = var.cluster_name
+  vpc_id                    = local.vpc_id
+  public_subnet_ids         = local.public_subnet_ids
+  private_subnet_ids        = local.private_subnet_ids
+  certificate_arn           = var.ecs_acm_certificate_arn != null ? var.ecs_acm_certificate_arn : module.ecs[0].certificate_arn
+  target_port               = var.ecs_container_port
+  health_check_path         = var.ecs_health_check_path
+  internal_alb              = var.ecs_internal_alb
+  allowed_cidr_blocks       = var.ecs_allowed_cidr_blocks
+  ssl_policy                = var.ecs_ssl_policy
+  enable_deletion_protection = var.ecs_enable_deletion_protection
+  enable_waf                = var.ecs_enable_waf
+  rate_limit_per_5min       = var.ecs_rate_limit_per_5min
+
+  tags = var.tags
+
+  depends_on = [module.vpc, module.ecs]
+}
+
+# Security Group Rule: Allow ALB to access ECS tasks
+resource "aws_security_group_rule" "alb_to_ecs" {
+  count                    = var.enable_ecs ? 1 : 0
+  type                     = "ingress"
+  from_port                = var.ecs_container_port
+  to_port                  = var.ecs_container_port
+  protocol                 = "tcp"
+  source_security_group_id = module.alb[0].security_group_id
+  security_group_id        = module.ecs[0].security_group_id
+
+  depends_on = [module.ecs, module.alb]
+}
+
+# Update ECS service with ALB target group (separate resource to avoid circular dependency)
+resource "aws_ecs_service" "main_with_alb" {
+  count           = var.enable_ecs ? 1 : 0
+  name            = "${var.cluster_name}-with-alb"
+  cluster         = module.ecs[0].cluster_id
+  task_definition = module.ecs[0].task_definition_arn
+  desired_count   = var.ecs_desired_count
+  launch_type     = "FARGATE"
+
+  network_configuration {
+    security_groups  = [module.ecs[0].security_group_id]
+    subnets          = local.private_subnet_ids
+    assign_public_ip = false
+  }
+
+  load_balancer {
+    target_group_arn = module.alb[0].target_group_arn
+    container_name   = "app"
+    container_port   = var.ecs_container_port
+  }
+
+  depends_on = [module.ecs, module.alb, aws_security_group_rule.alb_to_ecs]
+
+  tags = var.tags
+
+  lifecycle {
+    ignore_changes = [task_definition]
+  }
+}
