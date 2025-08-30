@@ -43,12 +43,15 @@ resource "aws_security_group" "ecs_tasks" {
     cidr_blocks = [data.aws_vpc.main.cidr_block]
   }
 
-  # Allow localhost communication for sidecar
-  ingress {
-    from_port   = 8080
-    to_port     = 8080
-    protocol    = "tcp"
-    cidr_blocks = ["127.0.0.1/32"]
+  # Allow localhost communication for sidecar (only when enabled)
+  dynamic "ingress" {
+    for_each = var.enable_secrets_sidecar ? [1] : []
+    content {
+      from_port   = 8080
+      to_port     = 8080
+      protocol    = "tcp"
+      cidr_blocks = ["127.0.0.1/32"]
+    }
   }
 
   egress {
@@ -211,78 +214,82 @@ resource "aws_ecs_task_definition" "main" {
   execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
   task_role_arn           = aws_iam_role.ecs_task_role.arn
 
-  container_definitions = jsonencode([
-    {
-      name  = "secrets-sidecar"
-      image = var.secrets_sidecar_image
-      essential = false
-      portMappings = [
-        {
-          containerPort = 8080
-          protocol      = "tcp"
-        }
-      ]
-      environment = [
-        {
-          name  = "AWS_REGION"
-          value = var.region
-        },
-        {
-          name  = "SECRETS_PREFIX"
-          value = var.secrets_prefix
-        }
-      ]
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          awslogs-group         = aws_cloudwatch_log_group.ecs_logs.name
-          awslogs-region        = var.region
-          awslogs-stream-prefix = "secrets-sidecar"
-        }
-      }
-      healthCheck = {
-        command     = ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
-        interval    = 30
-        timeout     = 5
-        retries     = 3
-        startPeriod = 60
-      }
-    },
-    {
-      name      = "app"
-      image     = var.container_image
-      essential = true
-      portMappings = [
-        {
-          containerPort = var.container_port
-          protocol      = "tcp"
-        }
-      ]
-      environment = concat(
-        [
+  container_definitions = jsonencode(concat(
+    var.enable_secrets_sidecar ? [
+      {
+        name  = "secrets-sidecar"
+        image = var.secrets_sidecar_image
+        essential = false
+        portMappings = [
           {
-            name  = "SECRETS_ENDPOINT"
-            value = "http://localhost:8080"
+            containerPort = 8080
+            protocol      = "tcp"
           }
-        ],
-        var.environment_variables
-      )
-      dependsOn = [
-        {
-          containerName = "secrets-sidecar"
-          condition     = "HEALTHY"
+        ]
+        environment = [
+          {
+            name  = "AWS_REGION"
+            value = var.region
+          },
+          {
+            name  = "SECRETS_PREFIX"
+            value = var.secrets_prefix
+          }
+        ]
+        logConfiguration = {
+          logDriver = "awslogs"
+          options = {
+            awslogs-group         = aws_cloudwatch_log_group.ecs_logs.name
+            awslogs-region        = var.region
+            awslogs-stream-prefix = "secrets-sidecar"
+          }
         }
-      ]
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          awslogs-group         = aws_cloudwatch_log_group.ecs_logs.name
-          awslogs-region        = var.region
-          awslogs-stream-prefix = "app"
+        healthCheck = {
+          command     = ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+          interval    = 30
+          timeout     = 5
+          retries     = 3
+          startPeriod = 60
         }
       }
-    }
-  ])
+    ] : [],
+    [
+      {
+        name      = "app"
+        image     = var.container_image
+        essential = true
+        portMappings = [
+          {
+            containerPort = var.container_port
+            protocol      = "tcp"
+          }
+        ]
+        environment = var.enable_secrets_sidecar ? concat(
+          [
+            {
+              name  = "SECRETS_ENDPOINT"
+              value = "http://localhost:8080"
+            }
+          ],
+          var.environment_variables
+        ) : var.environment_variables
+        dependsOn = var.enable_secrets_sidecar ? [
+          {
+            containerName = "secrets-sidecar"
+            condition     = "HEALTHY"
+          }
+        ] : []
+        logConfiguration = {
+          logDriver = "awslogs"
+          options = {
+            awslogs-group         = aws_cloudwatch_log_group.ecs_logs.name
+            awslogs-region        = var.region
+            awslogs-stream-prefix = "app"
+          }
+        }
+      }
+    ]
+  ))
 
   tags = var.tags
 }

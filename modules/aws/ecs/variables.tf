@@ -99,6 +99,12 @@ variable "domain_name" {
 
 # Note: ALB integration handled at main module level to avoid circular dependencies
 
+variable "enable_secrets_sidecar" {
+  description = "Whether to enable the secrets manager sidecar container"
+  type        = bool
+  default     = true
+}
+
 variable "log_retention_in_days" {
   description = "CloudWatch log retention in days"
   type        = number

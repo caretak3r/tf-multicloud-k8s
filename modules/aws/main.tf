@@ -120,6 +120,7 @@ module "ecs" {
   acm_certificate_arn       = var.ecs_acm_certificate_arn
   create_self_signed_cert   = var.ecs_create_self_signed_cert
   domain_name               = var.ecs_domain_name
+  enable_secrets_sidecar    = var.ecs_enable_secrets_sidecar
   alb_security_group_ids    = []  # Will be updated after ALB creation
   target_group_arn          = null  # Will be updated after ALB creation
   log_retention_in_days     = var.log_retention_in_days

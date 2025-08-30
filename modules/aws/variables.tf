@@ -291,6 +291,12 @@ variable "ecs_rate_limit_per_5min" {
   default     = 2000
 }
 
+variable "ecs_enable_secrets_sidecar" {
+  description = "Whether to enable the secrets manager sidecar container for ECS"
+  type        = bool
+  default     = true
+}
+
 variable "tags" {
   description = "Tags to apply to resources"
   type        = map(string)
