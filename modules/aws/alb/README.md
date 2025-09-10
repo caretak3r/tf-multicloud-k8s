@@ -2,15 +2,15 @@
 
 This module creates a secure Application Load Balancer (ALB) with:
 
-- HTTPS-only configuration with HTTP to HTTPS redirect
-- Target group with health checks
+- HTTPS-only configuration
+- HTTPS target group with health checks
 - Security groups with configurable access
 - Support for both internal and internet-facing deployments
 
 ## Features
 
 ### Security
-- **HTTPS Enforcement**: Automatic HTTP to HTTPS redirect
+- **HTTPS Only**: Secure HTTPS-only communication on port 443
 - **Security Groups**: Restrictive ingress rules with configurable CIDR blocks
 - **SSL/TLS**: Configurable SSL policies with secure defaults
 
