@@ -56,7 +56,7 @@ resource "azurerm_kubernetes_cluster" "main" {
     node_count                   = local.node_config.node_count
     vm_size                      = local.node_config.vm_size
     type                         = "VirtualMachineScaleSets"
-    auto_scaling_enabled         = true
+    enable_auto_scaling          = true
     min_count                    = local.node_config.min_count
     max_count                    = local.node_config.max_count
     max_pods                     = local.node_config.max_pods_per_node
@@ -115,7 +115,7 @@ resource "azurerm_kubernetes_cluster_node_pool" "system" {
   kubernetes_cluster_id = azurerm_kubernetes_cluster.main.id
   vm_size              = "Standard_DS2_v2"
   node_count           = 2
-  auto_scaling_enabled = true
+  enable_auto_scaling = true
   min_count           = 1
   max_count           = 3
   max_pods            = 30

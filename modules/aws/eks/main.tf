@@ -34,26 +34,6 @@ resource "aws_security_group" "cluster" {
   description = "Security group for EKS cluster control plane"
   vpc_id      = var.vpc_id
 
-  # Allow HTTPS traffic from nodes and bastion (if enabled)
-  ingress {
-    from_port       = 443
-    to_port         = 443
-    protocol        = "tcp"
-    security_groups = [aws_security_group.nodes.id]
-    description     = "Allow HTTPS from worker nodes"
-  }
-
-  dynamic "ingress" {
-    for_each = var.bastion_security_group_id != null ? [1] : []
-    content {
-      from_port       = 443
-      to_port         = 443
-      protocol        = "tcp"
-      security_groups = [var.bastion_security_group_id]
-      description     = "Allow HTTPS from bastion host"
-    }
-  }
-
   # Restrict egress to VPC CIDR only
   egress {
     from_port   = 0
@@ -92,14 +72,6 @@ resource "aws_security_group" "nodes" {
     description = "Allow all TCP traffic between worker nodes"
   }
 
-  # Allow traffic from cluster control plane
-  ingress {
-    from_port       = 0
-    to_port         = 65535
-    protocol        = "tcp"
-    security_groups = [aws_security_group.cluster.id]
-    description     = "Allow all TCP traffic from cluster control plane"
-  }
 
   # Allow SSH from bastion if enabled
   dynamic "ingress" {
@@ -134,6 +106,40 @@ resource "aws_security_group" "nodes" {
   tags = merge(var.tags, {
     Name = "${var.cluster_name}-nodes-sg"
   })
+}
+
+# Security group rules to allow communication between cluster and nodes
+# (Created as separate resources to avoid circular dependency)
+resource "aws_security_group_rule" "cluster_ingress_from_nodes" {
+  type                     = "ingress"
+  from_port                = 443
+  to_port                  = 443
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.nodes.id
+  security_group_id        = aws_security_group.cluster.id
+  description              = "Allow HTTPS from worker nodes"
+}
+
+resource "aws_security_group_rule" "nodes_ingress_from_cluster" {
+  type                     = "ingress"
+  from_port                = 0
+  to_port                  = 65535
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.cluster.id
+  security_group_id        = aws_security_group.nodes.id
+  description              = "Allow all TCP traffic from cluster control plane"
+}
+
+# Optional rule for bastion access to cluster (if bastion is enabled)
+resource "aws_security_group_rule" "cluster_ingress_from_bastion" {
+  count                    = var.bastion_security_group_id != null ? 1 : 0
+  type                     = "ingress"
+  from_port                = 443
+  to_port                  = 443
+  protocol                 = "tcp"
+  source_security_group_id = var.bastion_security_group_id
+  security_group_id        = aws_security_group.cluster.id
+  description              = "Allow HTTPS from bastion host"
 }
 
 # IAM role for EKS cluster

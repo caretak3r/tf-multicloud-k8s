@@ -21,7 +21,7 @@ data "aws_vpc" "existing" {
 }
 
 data "aws_subnets" "existing_private" {
-  count = var.create_vpc ? 0 : 1
+  count = var.create_vpc || length(var.existing_private_subnet_ids) > 0 ? 0 : 1
   
   filter {
     name   = "vpc-id"
@@ -35,7 +35,7 @@ data "aws_subnets" "existing_private" {
 }
 
 data "aws_subnets" "existing_public" {
-  count = var.create_vpc ? 0 : 1
+  count = var.create_vpc || length(var.existing_public_subnet_ids) > 0 ? 0 : 1
   
   filter {
     name   = "vpc-id"
@@ -52,8 +52,8 @@ data "aws_subnets" "existing_public" {
 locals {
   vpc_id              = var.create_vpc ? module.vpc[0].vpc_id : data.aws_vpc.existing[0].id
   vpc_cidr_block      = var.create_vpc ? module.vpc[0].vpc_cidr_block : data.aws_vpc.existing[0].cidr_block
-  private_subnet_ids  = var.create_vpc ? module.vpc[0].private_subnet_ids : data.aws_subnets.existing_private[0].ids
-  public_subnet_ids   = var.create_vpc ? module.vpc[0].public_subnet_ids : data.aws_subnets.existing_public[0].ids
+  private_subnet_ids  = var.create_vpc ? module.vpc[0].private_subnet_ids : (length(var.existing_private_subnet_ids) > 0 ? var.existing_private_subnet_ids : (length(data.aws_subnets.existing_private) > 0 ? data.aws_subnets.existing_private[0].ids : []))
+  public_subnet_ids   = var.create_vpc ? module.vpc[0].public_subnet_ids : (length(var.existing_public_subnet_ids) > 0 ? var.existing_public_subnet_ids : (length(data.aws_subnets.existing_public) > 0 ? data.aws_subnets.existing_public[0].ids : []))
 }
 
 # Bastion Host Module (optional)
@@ -121,8 +121,6 @@ module "ecs" {
   create_self_signed_cert   = var.ecs_create_self_signed_cert
   domain_name               = var.ecs_domain_name
   enable_secrets_sidecar    = var.ecs_enable_secrets_sidecar
-  alb_security_group_ids    = []  # Will be updated after ALB creation
-  target_group_arn          = null  # Will be updated after ALB creation
   log_retention_in_days     = var.log_retention_in_days
 
   tags = var.tags

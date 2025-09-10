@@ -26,6 +26,18 @@ variable "existing_vpc_id" {
   default     = null
 }
 
+variable "existing_private_subnet_ids" {
+  description = "List of existing private subnet IDs (used when create_vpc is false)"
+  type        = list(string)
+  default     = []
+}
+
+variable "existing_public_subnet_ids" {
+  description = "List of existing public subnet IDs (used when create_vpc is false)"
+  type        = list(string)
+  default     = []
+}
+
 variable "enable_eks" {
   description = "Whether to create EKS cluster"
   type        = bool
