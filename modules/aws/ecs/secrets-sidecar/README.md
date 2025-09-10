@@ -27,13 +27,13 @@ A lightweight Python Flask application that provides a REST API for accessing AW
 
 ```bash
 # Get a secret
-curl http://localhost:8080/secret/database-credentials
+curl http://localhost:5000/secret/database-credentials
 
 # Get a specific key from a JSON secret
-curl http://localhost:8080/secret/database-credentials/password
+curl http://localhost:5000/secret/database-credentials/password
 
 # Health check
-curl http://localhost:8080/health
+curl http://localhost:5000/health
 ```
 
 ## Building the Image

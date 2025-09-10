@@ -47,8 +47,8 @@ resource "aws_security_group" "ecs_tasks" {
   dynamic "ingress" {
     for_each = var.enable_secrets_sidecar ? [1] : []
     content {
-      from_port   = 8080
-      to_port     = 8080
+      from_port   = 5000
+      to_port     = 5000
       protocol    = "tcp"
       cidr_blocks = ["127.0.0.1/32"]
     }
@@ -222,7 +222,7 @@ resource "aws_ecs_task_definition" "main" {
         essential = false
         portMappings = [
           {
-            containerPort = 8080
+            containerPort = 5000
             protocol      = "tcp"
           }
         ]
@@ -245,7 +245,7 @@ resource "aws_ecs_task_definition" "main" {
           }
         }
         healthCheck = {
-          command     = ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+          command     = ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
           interval    = 30
           timeout     = 5
           retries     = 3
@@ -268,7 +268,7 @@ resource "aws_ecs_task_definition" "main" {
           [
             {
               name  = "SECRETS_ENDPOINT"
-              value = "http://localhost:8080"
+              value = "http://localhost:5000"
             }
           ],
           var.environment_variables
