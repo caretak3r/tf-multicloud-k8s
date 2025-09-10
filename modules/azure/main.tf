@@ -47,16 +47,15 @@ resource "azurerm_kubernetes_cluster" "main" {
   resource_group_name = azurerm_resource_group.main.name
   dns_prefix          = "${var.cluster_name}-k8s"
 
-  kubernetes_version        = "1.28"
-  automatic_channel_upgrade = "patch"
-  sku_tier                  = "Standard"
+  kubernetes_version = "1.28"
+  sku_tier           = "Standard"
 
   default_node_pool {
     name                         = "default"
     node_count                   = local.node_config.node_count
     vm_size                      = local.node_config.vm_size
     type                         = "VirtualMachineScaleSets"
-    enable_auto_scaling          = true
+    auto_scaling_enabled         = true
     min_count                    = local.node_config.min_count
     max_count                    = local.node_config.max_count
     max_pods                     = local.node_config.max_pods_per_node
@@ -82,7 +81,6 @@ resource "azurerm_kubernetes_cluster" "main" {
   role_based_access_control_enabled = true
 
   azure_active_directory_role_based_access_control {
-    managed                = true
     admin_group_object_ids = []
     azure_rbac_enabled     = true
   }
@@ -115,7 +113,7 @@ resource "azurerm_kubernetes_cluster_node_pool" "system" {
   kubernetes_cluster_id = azurerm_kubernetes_cluster.main.id
   vm_size               = "Standard_DS2_v2"
   node_count            = 2
-  enable_auto_scaling   = true
+  auto_scaling_enabled  = true
   min_count             = 1
   max_count             = 3
   max_pods              = 30
