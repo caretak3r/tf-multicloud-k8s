@@ -1,6 +1,8 @@
 # Terraform files
 *.tfstate
 *.tfstate.*
+examples/*
+.claude/*
 
 # Terraform directories
 .terraform/

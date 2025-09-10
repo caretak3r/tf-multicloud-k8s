@@ -23,7 +23,3 @@ output "security_group_id" {
   value       = aws_security_group.alb.id
 }
 
-output "waf_web_acl_arn" {
-  description = "ARN of the WAF Web ACL (if enabled)"
-  value       = var.enable_waf ? aws_wafv2_web_acl.main[0].arn : null
-}

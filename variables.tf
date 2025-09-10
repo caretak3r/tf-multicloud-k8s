@@ -208,17 +208,6 @@ variable "ecs_domain_name" {
   default     = null
 }
 
-variable "ecs_enable_waf" {
-  description = "Whether to enable WAF for ALB"
-  type        = bool
-  default     = false
-}
-
-variable "ecs_rate_limit_per_5min" {
-  description = "Rate limit per 5 minutes for WAF"
-  type        = number
-  default     = 2000
-}
 
 variable "ecs_enable_deletion_protection" {
   description = "Whether to enable deletion protection for ALB"

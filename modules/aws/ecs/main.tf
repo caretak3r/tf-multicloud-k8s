@@ -147,8 +147,8 @@ resource "aws_secretsmanager_secret" "app_secrets" {
 }
 
 resource "aws_secretsmanager_secret_version" "app_secrets" {
-  count     = length(var.secrets) > 0 ? 1 : 0
-  secret_id = aws_secretsmanager_secret.app_secrets[0].id
+  count         = length(var.secrets) > 0 ? 1 : 0
+  secret_id     = aws_secretsmanager_secret.app_secrets[0].id
   secret_string = jsonencode(var.secrets)
 }
 
@@ -172,7 +172,7 @@ resource "tls_self_signed_cert" "self_signed" {
 
   allowed_uses = [
     "key_encipherment",
-    "digital_signature", 
+    "digital_signature",
     "server_auth",
   ]
 }
@@ -212,13 +212,13 @@ resource "aws_ecs_task_definition" "main" {
   cpu                      = var.task_cpu
   memory                   = var.task_memory
   execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
-  task_role_arn           = aws_iam_role.ecs_task_role.arn
+  task_role_arn            = aws_iam_role.ecs_task_role.arn
 
   container_definitions = jsonencode(concat(
     var.enable_secrets_sidecar ? [
       {
-        name  = "secrets-sidecar"
-        image = var.secrets_sidecar_image
+        name      = "secrets-sidecar"
+        image     = var.secrets_sidecar_image
         essential = false
         portMappings = [
           {
