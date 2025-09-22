@@ -62,13 +62,13 @@ Your application container can access secrets via the sidecar:
 
 ```bash
 # Get entire secret
-curl http://localhost:5000/secret/database-credentials
+curl http://localhost:8080/secret/database-credentials
 
 # Get specific key from JSON secret  
-curl http://localhost:5000/secret/database-credentials/password
+curl http://localhost:8080/secret/database-credentials/password
 
 # Get certificate
-curl http://localhost:5000/secret/certificate
+curl http://localhost:8080/secret/certificate
 ```
 
 ## Certificate Handling

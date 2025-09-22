@@ -47,8 +47,8 @@ resource "aws_security_group" "ecs_tasks" {
   dynamic "ingress" {
     for_each = var.enable_secrets_sidecar ? [1] : []
     content {
-      from_port   = 5000
-      to_port     = 5000
+      from_port   = 8080
+      to_port     = 8080
       protocol    = "tcp"
       cidr_blocks = ["127.0.0.1/32"]
     }
@@ -147,8 +147,8 @@ resource "aws_secretsmanager_secret" "app_secrets" {
 }
 
 resource "aws_secretsmanager_secret_version" "app_secrets" {
-  count         = length(var.secrets) > 0 ? 1 : 0
-  secret_id     = aws_secretsmanager_secret.app_secrets[0].id
+  count     = length(var.secrets) > 0 ? 1 : 0
+  secret_id = aws_secretsmanager_secret.app_secrets[0].id
   secret_string = jsonencode(var.secrets)
 }
 
@@ -172,7 +172,7 @@ resource "tls_self_signed_cert" "self_signed" {
 
   allowed_uses = [
     "key_encipherment",
-    "digital_signature",
+    "digital_signature", 
     "server_auth",
   ]
 }
@@ -212,17 +212,17 @@ resource "aws_ecs_task_definition" "main" {
   cpu                      = var.task_cpu
   memory                   = var.task_memory
   execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
-  task_role_arn            = aws_iam_role.ecs_task_role.arn
+  task_role_arn           = aws_iam_role.ecs_task_role.arn
 
   container_definitions = jsonencode(concat(
     var.enable_secrets_sidecar ? [
       {
-        name      = "secrets-sidecar"
-        image     = var.secrets_sidecar_image
+        name  = "secrets-sidecar"
+        image = var.secrets_sidecar_image
         essential = false
         portMappings = [
           {
-            containerPort = 5000
+            containerPort = 8080
             protocol      = "tcp"
           }
         ]
@@ -245,7 +245,7 @@ resource "aws_ecs_task_definition" "main" {
           }
         }
         healthCheck = {
-          command     = ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
+          command     = ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
           interval    = 30
           timeout     = 5
           retries     = 3
@@ -268,7 +268,7 @@ resource "aws_ecs_task_definition" "main" {
           [
             {
               name  = "SECRETS_ENDPOINT"
-              value = "http://localhost:5000"
+              value = "http://localhost:8080"
             }
           ],
           var.environment_variables
