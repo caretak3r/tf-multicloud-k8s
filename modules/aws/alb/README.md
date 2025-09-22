@@ -2,17 +2,26 @@
 
 This module creates a secure Application Load Balancer (ALB) with:
 
-- HTTPS-only configuration
-- HTTPS target group with health checks
+- HTTPS-only configuration with HTTP to HTTPS redirect
+- AWS WAF integration for security protection
+- Target group with health checks
 - Security groups with configurable access
 - Support for both internal and internet-facing deployments
 
 ## Features
 
 ### Security
-- **HTTPS Only**: Secure HTTPS-only communication on port 443
+- **HTTPS Enforcement**: Automatic HTTP to HTTPS redirect
+- **AWS WAF Integration**: Protection against common attacks and rate limiting
 - **Security Groups**: Restrictive ingress rules with configurable CIDR blocks
 - **SSL/TLS**: Configurable SSL policies with secure defaults
+
+### WAF Protection
+The included WAF provides:
+- AWS Managed Common Rule Set (OWASP protection)
+- Known Bad Inputs protection  
+- Rate limiting (configurable per IP)
+- CloudWatch metrics and logging
 
 ## Usage
 
@@ -31,6 +40,8 @@ module "alb" {
   
   # Security configuration
   allowed_cidr_blocks = ["10.0.0.0/8", "192.168.1.0/24"]
+  enable_waf          = true
+  rate_limit_per_5min = 2000
   
   tags = {
     Environment = "production"
@@ -46,6 +57,8 @@ module "alb" {
 - `public_subnet_ids`/`private_subnet_ids`: Subnet placement
 
 ### Security Configuration  
+- `enable_waf`: Enable AWS WAF protection (recommended)
+- `rate_limit_per_5min`: Rate limiting threshold
 - `ssl_policy`: SSL/TLS policy for HTTPS listener
 - `enable_deletion_protection`: Prevent accidental deletion
 
@@ -58,6 +71,7 @@ module "alb" {
 - `alb_dns_name`: DNS name for accessing the application
 - `target_group_arn`: For ECS service integration
 - `security_group_id`: For allowing ECS task access
+- `waf_web_acl_arn`: WAF Web ACL ARN if enabled
 
 ## Requirements
 

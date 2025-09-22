@@ -19,6 +19,14 @@ resource "aws_security_group" "alb" {
   name_prefix = "${var.cluster_name}-alb-"
   vpc_id      = var.vpc_id
 
+  # HTTP redirect to HTTPS
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = var.allowed_cidr_blocks
+  }
+
   # HTTPS
   ingress {
     from_port   = 443
@@ -43,7 +51,7 @@ resource "aws_security_group" "alb" {
 resource "aws_lb_target_group" "main" {
   name        = "${var.cluster_name}-tg"
   port        = var.target_port
-  protocol    = "HTTPS"
+  protocol    = "HTTP"
   vpc_id      = var.vpc_id
   target_type = "ip"
 
@@ -54,12 +62,29 @@ resource "aws_lb_target_group" "main" {
     matcher             = "200"
     path                = var.health_check_path
     port                = "traffic-port"
-    protocol            = "HTTPS"
+    protocol            = "HTTP"
     timeout             = 5
     unhealthy_threshold = 2
   }
 
   tags = var.tags
+}
+
+# HTTP Listener (redirect to HTTPS)
+resource "aws_lb_listener" "http" {
+  load_balancer_arn = aws_lb.main.arn
+  port              = "80"
+  protocol          = "HTTP"
+
+  default_action {
+    type = "redirect"
+
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
+    }
+  }
 }
 
 # HTTPS Listener
@@ -76,3 +101,97 @@ resource "aws_lb_listener" "https" {
   }
 }
 
+# WAF Web ACL (optional)
+resource "aws_wafv2_web_acl" "main" {
+  count = var.enable_waf ? 1 : 0
+  name  = "${var.cluster_name}-waf"
+  scope = "REGIONAL"
+
+  default_action {
+    allow {}
+  }
+
+  # AWS Managed Rule - Common Rule Set
+  rule {
+    name     = "AWSManagedRulesCommonRuleSet"
+    priority = 1
+
+    override_action {
+      none {}
+    }
+
+    statement {
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesCommonRuleSet"
+        vendor_name = "AWS"
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "CommonRuleSetMetric"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  # AWS Managed Rule - Known Bad Inputs
+  rule {
+    name     = "AWSManagedRulesKnownBadInputsRuleSet"
+    priority = 2
+
+    override_action {
+      none {}
+    }
+
+    statement {
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesKnownBadInputsRuleSet"
+        vendor_name = "AWS"
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "KnownBadInputsRuleSetMetric"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  # Rate limiting rule
+  rule {
+    name     = "RateLimitRule"
+    priority = 3
+
+    action {
+      block {}
+    }
+
+    statement {
+      rate_based_statement {
+        limit              = var.rate_limit_per_5min
+        aggregate_key_type = "IP"
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "RateLimitRuleMetric"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  visibility_config {
+    cloudwatch_metrics_enabled = true
+    metric_name                = "${var.cluster_name}WAFMetric"
+    sampled_requests_enabled   = true
+  }
+
+  tags = var.tags
+}
+
+# Associate WAF with ALB
+resource "aws_wafv2_web_acl_association" "main" {
+  count        = var.enable_waf ? 1 : 0
+  resource_arn = aws_lb.main.arn
+  web_acl_arn  = aws_wafv2_web_acl.main[0].arn
+}

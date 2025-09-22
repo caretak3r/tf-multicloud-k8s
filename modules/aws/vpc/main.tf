@@ -24,8 +24,8 @@ resource "aws_subnet" "private" {
   availability_zone = data.aws_availability_zones.available.names[count.index]
 
   tags = merge(var.tags, {
-    Name                              = "${var.name_prefix}-private-${count.index + 1}"
-    Type                              = "private"
+    Name = "${var.name_prefix}-private-${count.index + 1}"
+    Type = "private"
     "kubernetes.io/role/internal-elb" = "1"
   })
 }
@@ -39,8 +39,8 @@ resource "aws_subnet" "public" {
   map_public_ip_on_launch = false
 
   tags = merge(var.tags, {
-    Name                     = "${var.name_prefix}-public-${count.index + 1}"
-    Type                     = "public"
+    Name = "${var.name_prefix}-public-${count.index + 1}"
+    Type = "public"
     "kubernetes.io/role/elb" = "1"
   })
 }
@@ -160,11 +160,11 @@ resource "aws_security_group" "vpc_endpoints" {
 resource "aws_vpc_endpoint" "s3" {
   count = var.enable_vpc_endpoints ? 1 : 0
 
-  vpc_id            = aws_vpc.main.id
-  service_name      = "com.amazonaws.${data.aws_region.current.name}.s3"
-  vpc_endpoint_type = "Gateway"
-  route_table_ids   = var.enable_private_subnets ? aws_route_table.private[*].id : []
-  policy            = data.aws_iam_policy_document.s3_endpoint_policy[0].json
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${data.aws_region.current.name}.s3"
+  vpc_endpoint_type   = "Gateway"
+  route_table_ids     = var.enable_private_subnets ? aws_route_table.private[*].id : []
+  policy              = data.aws_iam_policy_document.s3_endpoint_policy[0].json
 
   tags = merge(var.tags, {
     Name = "${var.name_prefix}-s3-endpoint"

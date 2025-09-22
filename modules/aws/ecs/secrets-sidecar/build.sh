@@ -22,7 +22,7 @@ if [ $? -eq 0 ]; then
     echo "4. Push image: docker push <account>.dkr.ecr.<region>.amazonaws.com/$IMAGE_NAME:$TAG"
     echo ""
     echo "To test locally:"
-    echo "docker run -p 5000:5000 -e AWS_REGION=us-east-1 -e SECRETS_PREFIX=myapp/ $FULL_IMAGE_NAME"
+    echo "docker run -p 8080:8080 -e AWS_REGION=us-east-1 -e SECRETS_PREFIX=myapp/ $FULL_IMAGE_NAME"
 else
     echo "❌ Failed to build $FULL_IMAGE_NAME"
     exit 1
