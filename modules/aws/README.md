@@ -1,6 +1,6 @@
 # AWS Infrastructure Modules
 
-This directory contains modular Terraform configurations for deploying secure AWS infrastructure with EKS, VPC, and optional bastion host.
+This directory contains modular Terraform configurations for deploying secure AWS infrastructure with EKS, ECS, VPC, and optional bastion host.
 
 ## Architecture Overview
 
@@ -8,6 +8,8 @@ The modules provide a highly secure, private-by-default AWS infrastructure:
 
 - **VPC Module**: Creates a VPC with private/public subnets, NAT gateways, and VPC endpoints
 - **EKS Module**: Deploys a private EKS cluster with worker nodes in private subnets
+- **ECS Module**: Deploys ECS Fargate cluster with secrets management and certificate handling
+- **ALB Module**: Application Load Balancer with WAF protection and HTTPS enforcement
 - **Bastion Module**: Optional bastion host for secure access to private resources
 
 ## Key Security Features
@@ -36,6 +38,8 @@ modules/aws/
 ├── outputs.tf        # Module outputs
 ├── vpc/             # VPC and networking resources
 ├── eks/             # EKS cluster and node groups
+├── ecs/             # ECS Fargate cluster and services
+├── alb/             # Application Load Balancer
 └── bastion/         # Optional bastion host
 ```
 
@@ -91,7 +95,37 @@ module "aws_infrastructure" {
 }
 ```
 
-### 3. VPC Only (Network Foundation)
+### 3. ECS with Application Load Balancer
+```hcl
+module "aws_infrastructure" {
+  source = "./modules/aws"
+  
+  cluster_name = "my-ecs-app"
+  region       = "us-west-2"
+  environment  = "production"
+  
+  # Enable ECS (disable EKS)
+  enable_eks = false
+  enable_ecs = true
+  
+  # Container configuration
+  ecs_container_image = "my-app:latest"
+  ecs_container_port  = 8000
+  ecs_desired_count   = 3
+  
+  # Secrets configuration
+  ecs_secrets = {
+    database_url = "postgresql://..."
+    api_key     = "secret-key"
+  }
+  
+  # Use self-signed certificate (or provide ACM ARN)
+  ecs_create_self_signed_cert = true
+  ecs_domain_name            = "myapp.example.com"
+}
+```
+
+### 4. VPC Only (Network Foundation)
 ```hcl
 module "aws_infrastructure" {
   source = "./modules/aws"
@@ -103,6 +137,7 @@ module "aws_infrastructure" {
   # Create VPC only
   create_vpc     = true
   enable_eks     = false
+  enable_ecs     = false
   enable_bastion = false
   
   vpc_cidr                 = "10.0.0.0/16"
@@ -116,6 +151,7 @@ module "aws_infrastructure" {
 - `create_vpc`: Whether to create a new VPC (default: true)
 - `existing_vpc_id`: ID of existing VPC (required if create_vpc is false)
 - `enable_eks`: Whether to create EKS cluster (default: true)
+- `enable_ecs`: Whether to create ECS cluster (default: false)
 - `enable_bastion`: Whether to create bastion host (default: false)
 - `enable_nat_gateway`: Whether to create NAT gateways (default: true)
 - `enable_vpc_endpoints`: Whether to create VPC endpoints (default: true)
@@ -129,6 +165,16 @@ module "aws_infrastructure" {
 - `kubernetes_version`: EKS version (default: "1.28")
 - `capacity_type`: ON_DEMAND or SPOT (default: ON_DEMAND)
 - `node_ssh_key_name`: EC2 key pair for worker nodes
+
+### ECS Configuration
+- `ecs_container_image`: Docker image for application container
+- `ecs_container_port`: Port exposed by application (default: 8000)
+- `ecs_task_cpu`: CPU units for task (256-4096, default: 512)
+- `ecs_task_memory`: Memory in MB (default: 1024)
+- `ecs_desired_count`: Number of running tasks (default: 2)
+- `ecs_secrets`: Map of secrets for Secrets Manager
+- `ecs_acm_certificate_arn`: Existing ACM certificate (optional)
+- `ecs_create_self_signed_cert`: Create self-signed cert (default: true)
 
 ### Bastion Configuration
 - `bastion_key_name`: EC2 key pair for bastion host
@@ -146,6 +192,12 @@ module "aws_infrastructure" {
 - `cluster_endpoint`: EKS cluster endpoint
 - `cluster_name`: EKS cluster name
 - `kubeconfig_command`: Command to configure kubectl
+
+### ECS Outputs  
+- `ecs_cluster_id`: ECS cluster ID
+- `alb_dns_name`: ALB DNS name for accessing application
+- `ecs_certificate_arn`: Certificate ARN (provided or self-signed)
+- `secrets_endpoint`: Internal endpoint for secrets access
 
 ### Bastion Outputs
 - `bastion_public_ip`: Bastion host public IP

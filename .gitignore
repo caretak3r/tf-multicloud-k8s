@@ -1,9 +1,6 @@
 # Terraform files
 *.tfstate
 *.tfstate.*
-*.tfvars
-!*.tfvars.example
-!environments/*.tfvars
 
 # Terraform directories
 .terraform/
