@@ -35,5 +35,5 @@ output "certificate_arn" {
 
 output "secrets_endpoint" {
   description = "Endpoint for accessing secrets via sidecar"
-  value       = "http://localhost:8080"
+  value       = "http://localhost:5000"
 }

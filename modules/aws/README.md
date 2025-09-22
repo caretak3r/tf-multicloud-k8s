@@ -9,7 +9,7 @@ The modules provide a highly secure, private-by-default AWS infrastructure:
 - **VPC Module**: Creates a VPC with private/public subnets, NAT gateways, and VPC endpoints
 - **EKS Module**: Deploys a private EKS cluster with worker nodes in private subnets
 - **ECS Module**: Deploys ECS Fargate cluster with secrets management and certificate handling
-- **ALB Module**: Application Load Balancer with WAF protection and HTTPS enforcement
+- **ALB Module**: Application Load Balancer with HTTPS enforcement
 - **Bastion Module**: Optional bastion host for secure access to private resources
 
 ## Key Security Features

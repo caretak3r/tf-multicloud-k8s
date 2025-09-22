@@ -59,17 +59,6 @@ variable "enable_deletion_protection" {
   default     = false
 }
 
-variable "enable_waf" {
-  description = "Enable AWS WAF for additional security"
-  type        = bool
-  default     = true
-}
-
-variable "rate_limit_per_5min" {
-  description = "Rate limit per IP per 5 minutes for WAF"
-  type        = number
-  default     = 2000
-}
 
 variable "tags" {
   description = "Tags to apply to resources"

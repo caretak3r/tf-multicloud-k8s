@@ -26,6 +26,18 @@ variable "existing_vpc_id" {
   default     = null
 }
 
+variable "existing_private_subnet_ids" {
+  description = "List of existing private subnet IDs (used when create_vpc is false)"
+  type        = list(string)
+  default     = []
+}
+
+variable "existing_public_subnet_ids" {
+  description = "List of existing public subnet IDs (used when create_vpc is false)"
+  type        = list(string)
+  default     = []
+}
+
 variable "enable_eks" {
   description = "Whether to create EKS cluster"
   type        = bool
@@ -279,17 +291,6 @@ variable "ecs_enable_deletion_protection" {
   default     = false
 }
 
-variable "ecs_enable_waf" {
-  description = "Enable AWS WAF for ECS ALB"
-  type        = bool
-  default     = true
-}
-
-variable "ecs_rate_limit_per_5min" {
-  description = "Rate limit per IP per 5 minutes for ECS WAF"
-  type        = number
-  default     = 2000
-}
 
 variable "ecs_enable_secrets_sidecar" {
   description = "Whether to enable the secrets manager sidecar container for ECS"
