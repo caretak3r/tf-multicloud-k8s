@@ -40,5 +40,13 @@ module "aws_eks" {
   cluster_name     = var.cluster_name
   environment      = var.environment
   node_size_config = var.node_size_config
-  tags             = var.tags
+  
+  # ECS Configuration
+  enable_ecs           = var.enable_ecs
+  ecs_launch_type      = var.ecs_launch_type
+  ecs_container_image  = var.ecs_container_image
+  ecs_instance_type    = var.ecs_instance_type
+  ecs_key_name         = var.ecs_key_name
+  
+  tags = var.tags
 }

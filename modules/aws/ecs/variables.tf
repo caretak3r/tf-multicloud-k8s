@@ -116,3 +116,68 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+# EC2 Launch Type Variables
+variable "launch_type" {
+  description = "Launch type for ECS tasks (FARGATE or EC2)"
+  type        = string
+  default     = "FARGATE"
+  validation {
+    condition     = contains(["FARGATE", "EC2"], var.launch_type)
+    error_message = "Launch type must be either FARGATE or EC2."
+  }
+}
+
+variable "instance_type" {
+  description = "EC2 instance type for ECS container instances (only used when launch_type is EC2)"
+  type        = string
+  default     = "t3.medium"
+}
+
+variable "min_size" {
+  description = "Minimum number of EC2 instances in the Auto Scaling Group (only used when launch_type is EC2)"
+  type        = number
+  default     = 1
+}
+
+variable "max_size" {
+  description = "Maximum number of EC2 instances in the Auto Scaling Group (only used when launch_type is EC2)"
+  type        = number
+  default     = 3
+}
+
+variable "desired_capacity" {
+  description = "Desired number of EC2 instances in the Auto Scaling Group (only used when launch_type is EC2)"
+  type        = number
+  default     = 2
+}
+
+variable "key_name" {
+  description = "Name of the AWS key pair for EC2 instances (optional, only used when launch_type is EC2)"
+  type        = string
+  default     = null
+}
+
+variable "enable_container_insights" {
+  description = "Enable CloudWatch Container Insights for the cluster"
+  type        = bool
+  default     = true
+}
+
+variable "ec2_spot_price" {
+  description = "The maximum price per hour for spot instances (only used when launch_type is EC2, leave null for on-demand)"
+  type        = string
+  default     = null
+}
+
+variable "ebs_volume_size" {
+  description = "Size of the EBS volume for EC2 instances in GB (only used when launch_type is EC2)"
+  type        = number
+  default     = 30
+}
+
+variable "ebs_volume_type" {
+  description = "Type of the EBS volume for EC2 instances (only used when launch_type is EC2)"
+  type        = string
+  default     = "gp3"
+}

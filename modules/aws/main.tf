@@ -121,9 +121,19 @@ module "ecs" {
   create_self_signed_cert   = var.ecs_create_self_signed_cert
   domain_name               = var.ecs_domain_name
   enable_secrets_sidecar    = var.ecs_enable_secrets_sidecar
-  alb_security_group_ids    = []  # Will be updated after ALB creation
-  target_group_arn          = null  # Will be updated after ALB creation
   log_retention_in_days     = var.log_retention_in_days
+  
+  # EC2 Launch Type Variables
+  launch_type               = var.ecs_launch_type
+  instance_type             = var.ecs_instance_type
+  min_size                  = var.ecs_min_size
+  max_size                  = var.ecs_max_size
+  desired_capacity          = var.ecs_desired_capacity
+  key_name                  = var.ecs_key_name
+  enable_container_insights = var.ecs_enable_container_insights
+  ec2_spot_price           = var.ecs_ec2_spot_price
+  ebs_volume_size          = var.ecs_ebs_volume_size
+  ebs_volume_type          = var.ecs_ebs_volume_type
 
   tags = var.tags
 
@@ -174,12 +184,25 @@ resource "aws_ecs_service" "main_with_alb" {
   cluster         = module.ecs[0].cluster_id
   task_definition = module.ecs[0].task_definition_arn
   desired_count   = var.ecs_desired_count
-  launch_type     = "FARGATE"
+  launch_type     = var.ecs_launch_type
 
-  network_configuration {
-    security_groups  = [module.ecs[0].security_group_id]
-    subnets          = local.private_subnet_ids
-    assign_public_ip = false
+  # Network configuration - only for Fargate launch type
+  dynamic "network_configuration" {
+    for_each = var.ecs_launch_type == "FARGATE" ? [1] : []
+    content {
+      security_groups  = [module.ecs[0].security_group_id]
+      subnets          = local.private_subnet_ids
+      assign_public_ip = false
+    }
+  }
+  
+  # Placement constraints for EC2 launch type
+  dynamic "placement_constraints" {
+    for_each = var.ecs_launch_type == "EC2" ? [1] : []
+    content {
+      type = "memberOf"
+      expression = "attribute:ecs.instance-type =~ t3.*"
+    }
   }
 
   load_balancer {

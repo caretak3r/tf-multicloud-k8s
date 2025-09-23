@@ -49,3 +49,38 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+# ECS Configuration Variables (AWS only)
+variable "enable_ecs" {
+  description = "Whether to create ECS cluster and services (AWS only)"
+  type        = bool
+  default     = false
+}
+
+variable "ecs_launch_type" {
+  description = "Launch type for ECS tasks - FARGATE or EC2 (AWS only)"
+  type        = string
+  default     = "FARGATE"
+  validation {
+    condition     = contains(["FARGATE", "EC2"], var.ecs_launch_type)
+    error_message = "ECS launch type must be either FARGATE or EC2."
+  }
+}
+
+variable "ecs_container_image" {
+  description = "Docker image for the ECS application container (AWS only)"
+  type        = string
+  default     = "nginx:latest"
+}
+
+variable "ecs_instance_type" {
+  description = "EC2 instance type for ECS container instances (only used when ecs_launch_type is EC2, AWS only)"
+  type        = string
+  default     = "t3.medium"
+}
+
+variable "ecs_key_name" {
+  description = "Name of the AWS key pair for ECS EC2 instances (optional, only used when ecs_launch_type is EC2, AWS only)"
+  type        = string
+  default     = null
+}
