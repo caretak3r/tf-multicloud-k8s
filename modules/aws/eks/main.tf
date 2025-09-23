@@ -34,15 +34,7 @@ resource "aws_security_group" "cluster" {
   description = "Security group for EKS cluster control plane"
   vpc_id      = var.vpc_id
 
-  # Allow HTTPS traffic from nodes and bastion (if enabled)
-  ingress {
-    from_port       = 443
-    to_port         = 443
-    protocol        = "tcp"
-    security_groups = [aws_security_group.nodes.id]
-    description     = "Allow HTTPS from worker nodes"
-  }
-
+  # Bastion access (if enabled)
   dynamic "ingress" {
     for_each = var.bastion_security_group_id != null ? [1] : []
     content {
@@ -92,13 +84,13 @@ resource "aws_security_group" "nodes" {
     description = "Allow all TCP traffic between worker nodes"
   }
 
-  # Allow traffic from cluster control plane
+  # Allow traffic from VPC CIDR (including control plane)
   ingress {
-    from_port       = 0
-    to_port         = 65535
-    protocol        = "tcp"
-    security_groups = [aws_security_group.cluster.id]
-    description     = "Allow all TCP traffic from cluster control plane"
+    from_port   = 0
+    to_port     = 65535
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr_block]
+    description = "Allow all TCP traffic from VPC (including control plane)"
   }
 
   # Allow SSH from bastion if enabled
@@ -341,6 +333,17 @@ resource "aws_eks_addon" "kube_proxy" {
   resolve_conflicts_on_create = "OVERWRITE"
   
   tags = var.tags
+}
+
+# Security Group Rule: Allow nodes to communicate with cluster control plane
+resource "aws_security_group_rule" "nodes_to_cluster" {
+  type                     = "ingress"
+  from_port                = 443
+  to_port                  = 443
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.nodes.id
+  security_group_id        = aws_security_group.cluster.id
+  description              = "Allow HTTPS from worker nodes to control plane"
 }
 
 resource "aws_eks_addon" "ebs_csi" {

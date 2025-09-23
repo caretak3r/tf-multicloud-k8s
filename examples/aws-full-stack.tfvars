@@ -3,9 +3,10 @@ cluster_name  = "my-secure-eks"
 region        = "us-west-2"
 environment   = "dev"
 
-# Enable all components
+# Enable EKS components, disable ECS for isolation
 create_vpc      = true
 enable_eks      = true
+enable_ecs      = false
 enable_bastion  = true
 
 # VPC Configuration

@@ -19,56 +19,56 @@ output "public_subnet_ids" {
   value       = local.public_subnet_ids
 }
 
-# EKS Outputs
+# EKS Outputs - Only available when EKS is enabled and ECS is disabled (isolated)
 output "cluster_endpoint" {
   description = "EKS cluster endpoint"
-  value       = var.enable_eks ? module.eks[0].cluster_endpoint : null
+  value       = var.enable_eks && !var.enable_ecs ? module.eks[0].cluster_endpoint : null
 }
 
 output "cluster_ca_certificate" {
   description = "EKS cluster CA certificate"
-  value       = var.enable_eks ? module.eks[0].cluster_ca_certificate : null
+  value       = var.enable_eks && !var.enable_ecs ? module.eks[0].cluster_ca_certificate : null
   sensitive   = true
 }
 
 output "cluster_id" {
   description = "EKS cluster ID"
-  value       = var.enable_eks ? module.eks[0].cluster_id : null
+  value       = var.enable_eks && !var.enable_ecs ? module.eks[0].cluster_id : null
 }
 
 output "cluster_name" {
   description = "EKS cluster name"
-  value       = var.enable_eks ? module.eks[0].cluster_name : var.cluster_name
+  value       = var.enable_eks && !var.enable_ecs ? module.eks[0].cluster_name : var.cluster_name
 }
 
 output "cluster_arn" {
   description = "EKS cluster ARN"
-  value       = var.enable_eks ? module.eks[0].cluster_arn : null
+  value       = var.enable_eks && !var.enable_ecs ? module.eks[0].cluster_arn : null
 }
 
 output "cluster_version" {
   description = "EKS cluster version"
-  value       = var.enable_eks ? module.eks[0].cluster_version : null
+  value       = var.enable_eks && !var.enable_ecs ? module.eks[0].cluster_version : null
 }
 
 output "cluster_security_group_id" {
   description = "Security group ID attached to the EKS cluster"
-  value       = var.enable_eks ? module.eks[0].cluster_security_group_id : null
+  value       = var.enable_eks && !var.enable_ecs ? module.eks[0].cluster_security_group_id : null
 }
 
 output "node_security_group_id" {
   description = "Security group ID attached to the EKS worker nodes"
-  value       = var.enable_eks ? module.eks[0].node_security_group_id : null
+  value       = var.enable_eks && !var.enable_ecs ? module.eks[0].node_security_group_id : null
 }
 
 output "oidc_issuer_url" {
   description = "The URL on the EKS cluster OIDC Issuer"
-  value       = var.enable_eks ? module.eks[0].oidc_issuer_url : null
+  value       = var.enable_eks && !var.enable_ecs ? module.eks[0].oidc_issuer_url : null
 }
 
 output "kubeconfig_command" {
   description = "Command to get kubeconfig for EKS (requires bastion or VPN access for private cluster)"
-  value       = var.enable_eks ? module.eks[0].kubeconfig_command : "EKS cluster not enabled"
+  value       = var.enable_eks && !var.enable_ecs ? module.eks[0].kubeconfig_command : "EKS cluster not enabled or ECS is enabled"
 }
 
 # Bastion Outputs

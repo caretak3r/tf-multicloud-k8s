@@ -3,7 +3,7 @@ output "cluster_endpoint" {
   value = var.cloud_provider == "azure" ? (
     length(module.azure_aks) > 0 ? module.azure_aks[0].cluster_endpoint : null
   ) : (
-    length(module.aws_eks) > 0 ? module.aws_eks[0].cluster_endpoint : null
+    length(module.aws_infrastructure) > 0 ? module.aws_infrastructure[0].cluster_endpoint : null
   )
 }
 
@@ -12,7 +12,7 @@ output "cluster_ca_certificate" {
   value = var.cloud_provider == "azure" ? (
     length(module.azure_aks) > 0 ? module.azure_aks[0].cluster_ca_certificate : null
   ) : (
-    length(module.aws_eks) > 0 ? module.aws_eks[0].cluster_ca_certificate : null
+    length(module.aws_infrastructure) > 0 ? module.aws_infrastructure[0].cluster_ca_certificate : null
   )
   sensitive = true
 }
@@ -22,6 +22,6 @@ output "kubeconfig_command" {
   value = var.cloud_provider == "azure" ? (
     length(module.azure_aks) > 0 ? module.azure_aks[0].kubeconfig_command : null
   ) : (
-    length(module.aws_eks) > 0 ? module.aws_eks[0].kubeconfig_command : null
+    length(module.aws_infrastructure) > 0 ? module.aws_infrastructure[0].kubeconfig_command : null
   )
 }

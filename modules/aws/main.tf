@@ -75,10 +75,10 @@ module "bastion" {
   tags = var.tags
 }
 
-# EKS Cluster Module
+# EKS Cluster Module - Completely separate from ECS
 module "eks" {
   source = "./eks"
-  count  = var.enable_eks ? 1 : 0
+  count  = var.enable_eks && !var.enable_ecs ? 1 : 0  # EKS only when ECS is disabled
 
   cluster_name               = var.cluster_name
   vpc_id                     = local.vpc_id

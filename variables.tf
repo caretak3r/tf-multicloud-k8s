@@ -84,3 +84,96 @@ variable "ecs_key_name" {
   type        = string
   default     = null
 }
+
+# Additional ECS Configuration Variables
+variable "ecs_container_port" {
+  description = "Port exposed by the ECS application container (AWS only)"
+  type        = number
+  default     = 8000
+}
+
+variable "ecs_task_cpu" {
+  description = "CPU units for the ECS task (AWS only)"
+  type        = number
+  default     = 512
+}
+
+variable "ecs_task_memory" {
+  description = "Memory (MB) for the ECS task (AWS only)"
+  type        = number
+  default     = 1024
+}
+
+variable "ecs_desired_count" {
+  description = "Desired number of ECS tasks (AWS only)"
+  type        = number
+  default     = 2
+}
+
+variable "ecs_secrets_prefix" {
+  description = "Prefix for ECS secrets in AWS Secrets Manager (AWS only)"
+  type        = string
+  default     = ""
+}
+
+variable "ecs_secrets" {
+  description = "Map of secrets to store in AWS Secrets Manager for ECS (AWS only)"
+  type        = map(string)
+  default     = {}
+  sensitive   = true
+}
+
+variable "ecs_create_self_signed_cert" {
+  description = "Whether to create self-signed certificate for ECS (AWS only)"
+  type        = bool
+  default     = true
+}
+
+variable "ecs_health_check_path" {
+  description = "Health check path for ECS ALB target group (AWS only)"
+  type        = string
+  default     = "/health"
+}
+
+variable "ecs_internal_alb" {
+  description = "Whether the ECS ALB should be internal/private (AWS only)"
+  type        = bool
+  default     = false
+}
+
+variable "ecs_enable_waf" {
+  description = "Enable AWS WAF for ECS ALB (AWS only)"
+  type        = bool
+  default     = true
+}
+
+# Networking Variables
+variable "enable_nat_gateway" {
+  description = "Whether to create NAT gateways for private subnets (AWS only)"
+  type        = bool
+  default     = true
+}
+
+variable "enable_vpc_endpoints" {
+  description = "Whether to create VPC endpoints for AWS services (AWS only)"
+  type        = bool
+  default     = true
+}
+
+variable "create_vpc" {
+  description = "Whether to create a new VPC (AWS only)"
+  type        = bool
+  default     = true
+}
+
+variable "existing_vpc_id" {
+  description = "ID of existing VPC to use (AWS only, required if create_vpc is false)"
+  type        = string
+  default     = null
+}
+
+variable "enable_bastion" {
+  description = "Whether to create bastion host (AWS only)"
+  type        = bool
+  default     = false
+}

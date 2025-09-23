@@ -7,8 +7,9 @@ environment   = "prod"
 create_vpc        = false
 existing_vpc_id   = "vpc-0123456789abcdef0"  # Replace with your VPC ID
 
-# Enable only EKS
+# Enable only EKS, disable ECS explicitly
 enable_eks     = true
+enable_ecs     = false
 enable_bastion = false
 
 # Networking
