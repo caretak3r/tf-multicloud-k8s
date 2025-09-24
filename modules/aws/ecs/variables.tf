@@ -11,6 +11,10 @@ variable "vpc_id" {
 variable "private_subnet_ids" {
   description = "List of private subnet IDs for ECS tasks"
   type        = list(string)
+  validation {
+    condition     = length(var.private_subnet_ids) > 0
+    error_message = "At least one private subnet ID must be provided for ECS tasks."
+  }
 }
 
 variable "region" {

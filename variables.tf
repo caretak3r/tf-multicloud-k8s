@@ -160,16 +160,22 @@ variable "enable_vpc_endpoints" {
   default     = true
 }
 
-variable "create_vpc" {
-  description = "Whether to create a new VPC (AWS only)"
-  type        = bool
-  default     = true
+variable "vpc_id" {
+  description = "VPC ID to use (AWS only). If not provided, a new VPC will be created"
+  type        = string
+  default     = ""
 }
 
-variable "existing_vpc_id" {
-  description = "ID of existing VPC to use (AWS only, required if create_vpc is false)"
-  type        = string
-  default     = null
+variable "private_subnet_ids" {
+  description = "List of private subnet IDs (AWS only). If not provided, subnets will be created or discovered"
+  type        = list(string)
+  default     = []
+}
+
+variable "public_subnet_ids" {
+  description = "List of public subnet IDs (AWS only). If not provided, subnets will be created or discovered"
+  type        = list(string)
+  default     = []
 }
 
 variable "enable_bastion" {

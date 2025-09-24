@@ -443,15 +443,10 @@ resource "aws_ecs_task_definition" "main" {
         essential = false
         cpu = var.launch_type == "EC2" ? 256 : null
         memory = var.launch_type == "EC2" ? 512 : null
-        portMappings = var.launch_type == "FARGATE" ? [
+        portMappings = [
           {
             containerPort = 8080
-            protocol      = "tcp"
-          }
-        ] : [
-          {
-            containerPort = 8080
-            hostPort      = 0  # Dynamic port mapping for EC2
+            hostPort      = var.launch_type == "EC2" ? 0 : 8080
             protocol      = "tcp"
           }
         ]
@@ -489,15 +484,10 @@ resource "aws_ecs_task_definition" "main" {
         essential = true
         cpu = var.launch_type == "EC2" ? var.task_cpu : null
         memory = var.launch_type == "EC2" ? var.task_memory : null
-        portMappings = var.launch_type == "FARGATE" ? [
+        portMappings = [
           {
             containerPort = var.container_port
-            protocol      = "tcp"
-          }
-        ] : [
-          {
-            containerPort = var.container_port
-            hostPort      = 0  # Dynamic port mapping for EC2
+            hostPort      = var.launch_type == "EC2" ? 0 : var.container_port
             protocol      = "tcp"
           }
         ]

@@ -1,36 +1,17 @@
 terraform {
   required_version = ">= 1.0"
   required_providers {
-    azurerm = {
-      source  = "hashicorp/azurerm"
-      version = "~> 3.0"
-    }
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = "~> 6.0"
     }
   }
-}
-
-provider "azurerm" {
-  features {}
 }
 
 provider "aws" {
   region = var.aws_region
 }
 
-module "azure_aks" {
-  source = "./modules/azure"
-  count  = var.cloud_provider == "azure" ? 1 : 0
-
-  resource_group_name = var.resource_group_name
-  location           = var.location
-  cluster_name       = var.cluster_name
-  environment        = var.environment
-  node_size_config   = var.node_size_config
-  tags               = var.tags
-}
 
 module "aws_infrastructure" {
   source = "./modules/aws"
@@ -42,8 +23,9 @@ module "aws_infrastructure" {
   node_size_config = var.node_size_config
   
   # VPC Configuration
-  create_vpc             = var.create_vpc
-  existing_vpc_id        = var.existing_vpc_id
+  vpc_id                 = var.vpc_id
+  private_subnet_ids     = var.private_subnet_ids
+  public_subnet_ids      = var.public_subnet_ids
   enable_nat_gateway     = var.enable_nat_gateway
   enable_vpc_endpoints   = var.enable_vpc_endpoints
   enable_bastion         = var.enable_bastion

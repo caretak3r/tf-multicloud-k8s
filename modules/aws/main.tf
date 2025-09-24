@@ -1,7 +1,7 @@
 # VPC Module
 module "vpc" {
   source = "./vpc"
-  count  = var.create_vpc ? 1 : 0
+  count  = var.vpc_id == "" ? 1 : 0
 
   name_prefix               = var.cluster_name
   vpc_cidr                  = var.vpc_cidr
@@ -16,16 +16,16 @@ module "vpc" {
 
 # Use existing VPC data if not creating new one
 data "aws_vpc" "existing" {
-  count = var.create_vpc ? 0 : 1
-  id    = var.existing_vpc_id
+  count = var.vpc_id != "" ? 1 : 0
+  id    = var.vpc_id
 }
 
 data "aws_subnets" "existing_private" {
-  count = var.create_vpc ? 0 : 1
+  count = var.vpc_id != "" && length(var.private_subnet_ids) == 0 ? 1 : 0
   
   filter {
     name   = "vpc-id"
-    values = [var.existing_vpc_id]
+    values = [var.vpc_id]
   }
   
   filter {
@@ -35,11 +35,11 @@ data "aws_subnets" "existing_private" {
 }
 
 data "aws_subnets" "existing_public" {
-  count = var.create_vpc ? 0 : 1
+  count = var.vpc_id != "" && length(var.public_subnet_ids) == 0 ? 1 : 0
   
   filter {
     name   = "vpc-id"
-    values = [var.existing_vpc_id]
+    values = [var.vpc_id]
   }
   
   filter {
@@ -50,10 +50,21 @@ data "aws_subnets" "existing_public" {
 
 # Local values for VPC resources
 locals {
-  vpc_id              = var.create_vpc ? module.vpc[0].vpc_id : data.aws_vpc.existing[0].id
-  vpc_cidr_block      = var.create_vpc ? module.vpc[0].vpc_cidr_block : data.aws_vpc.existing[0].cidr_block
-  private_subnet_ids  = var.create_vpc ? module.vpc[0].private_subnet_ids : data.aws_subnets.existing_private[0].ids
-  public_subnet_ids   = var.create_vpc ? module.vpc[0].public_subnet_ids : data.aws_subnets.existing_public[0].ids
+  # VPC ID: use provided, or create new
+  vpc_id = var.vpc_id != "" ? var.vpc_id : module.vpc[0].vpc_id
+  
+  # VPC CIDR: from existing VPC or created VPC
+  vpc_cidr_block = var.vpc_id != "" ? data.aws_vpc.existing[0].cidr_block : module.vpc[0].vpc_cidr_block
+  
+  # Private subnets: use provided, discover from tags, or create new
+  private_subnet_ids = length(var.private_subnet_ids) > 0 ? var.private_subnet_ids : (
+    var.vpc_id != "" ? data.aws_subnets.existing_private[0].ids : module.vpc[0].private_subnet_ids
+  )
+  
+  # Public subnets: use provided, discover from tags, or create new  
+  public_subnet_ids = length(var.public_subnet_ids) > 0 ? var.public_subnet_ids : (
+    var.vpc_id != "" ? data.aws_subnets.existing_public[0].ids : module.vpc[0].public_subnet_ids
+  )
 }
 
 # Bastion Host Module (optional)
