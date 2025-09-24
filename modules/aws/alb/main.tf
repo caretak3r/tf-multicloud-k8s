@@ -1,10 +1,33 @@
+# Data source to get subnet details
+data "aws_subnet" "selected" {
+  for_each = toset(var.internal_alb ? var.private_subnet_ids : var.public_subnet_ids)
+  id       = each.value
+}
+
+# Local to ensure unique availability zones
+locals {
+  # Get unique AZs from the selected subnets
+  subnet_azs = {
+    for subnet_id, subnet in data.aws_subnet.selected :
+    subnet_id => subnet.availability_zone
+  }
+
+  # Group subnets by AZ and take only the first subnet from each AZ
+  unique_az_subnets = [
+    for az in distinct(values(local.subnet_azs)) : [
+      for subnet_id, subnet_az in local.subnet_azs :
+      subnet_id if subnet_az == az
+    ][0]
+  ]
+}
+
 # Application Load Balancer
 resource "aws_lb" "main" {
   name               = "${var.cluster_name}-alb"
   internal           = var.internal_alb
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
-  subnets            = var.internal_alb ? var.private_subnet_ids : var.public_subnet_ids
+  subnets            = local.unique_az_subnets
 
   enable_deletion_protection = var.enable_deletion_protection
 
@@ -12,6 +35,11 @@ resource "aws_lb" "main" {
   drop_invalid_header_fields = true
 
   tags = var.tags
+}
+
+# Data source for VPC CIDR
+data "aws_vpc" "main" {
+  id = var.vpc_id
 }
 
 # Security Group for ALB
@@ -24,7 +52,7 @@ resource "aws_security_group" "alb" {
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
-    cidr_blocks = var.allowed_cidr_blocks
+    cidr_blocks = var.internal_alb && length(var.allowed_cidr_blocks) == 1 && var.allowed_cidr_blocks[0] == "0.0.0.0/0" ? [data.aws_vpc.main.cidr_block] : var.allowed_cidr_blocks
   }
 
   # HTTPS
@@ -32,7 +60,7 @@ resource "aws_security_group" "alb" {
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
-    cidr_blocks = var.allowed_cidr_blocks
+    cidr_blocks = var.internal_alb && length(var.allowed_cidr_blocks) == 1 && var.allowed_cidr_blocks[0] == "0.0.0.0/0" ? [data.aws_vpc.main.cidr_block] : var.allowed_cidr_blocks
   }
 
   egress {

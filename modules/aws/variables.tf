@@ -13,17 +13,23 @@ variable "environment" {
   type        = string
 }
 
-# Module Control Variables
-variable "create_vpc" {
-  description = "Whether to create a new VPC"
-  type        = bool
-  default     = true
+# VPC and Networking Variables
+variable "vpc_id" {
+  description = "VPC ID to use. If not provided, a new VPC will be created"
+  type        = string
+  default     = ""
 }
 
-variable "existing_vpc_id" {
-  description = "ID of existing VPC (required if create_vpc is false)"
-  type        = string
-  default     = null
+variable "private_subnet_ids" {
+  description = "List of private subnet IDs. If not provided, subnets will be created or discovered"
+  type        = list(string)
+  default     = []
+}
+
+variable "public_subnet_ids" {
+  description = "List of public subnet IDs. If not provided, subnets will be created or discovered"
+  type        = list(string)
+  default     = []
 }
 
 variable "enable_eks" {
@@ -295,6 +301,71 @@ variable "ecs_enable_secrets_sidecar" {
   description = "Whether to enable the secrets manager sidecar container for ECS"
   type        = bool
   default     = true
+}
+
+# ECS Launch Type Configuration
+variable "ecs_launch_type" {
+  description = "Launch type for ECS tasks (FARGATE or EC2)"
+  type        = string
+  default     = "FARGATE"
+  validation {
+    condition     = contains(["FARGATE", "EC2"], var.ecs_launch_type)
+    error_message = "ECS launch type must be either FARGATE or EC2."
+  }
+}
+
+variable "ecs_instance_type" {
+  description = "EC2 instance type for ECS container instances (only used when ecs_launch_type is EC2)"
+  type        = string
+  default     = "t3.medium"
+}
+
+variable "ecs_min_size" {
+  description = "Minimum number of EC2 instances in the Auto Scaling Group for ECS (only used when ecs_launch_type is EC2)"
+  type        = number
+  default     = 1
+}
+
+variable "ecs_max_size" {
+  description = "Maximum number of EC2 instances in the Auto Scaling Group for ECS (only used when ecs_launch_type is EC2)"
+  type        = number
+  default     = 3
+}
+
+variable "ecs_desired_capacity" {
+  description = "Desired number of EC2 instances in the Auto Scaling Group for ECS (only used when ecs_launch_type is EC2)"
+  type        = number
+  default     = 2
+}
+
+variable "ecs_key_name" {
+  description = "Name of the AWS key pair for ECS EC2 instances (optional, only used when ecs_launch_type is EC2)"
+  type        = string
+  default     = null
+}
+
+variable "ecs_enable_container_insights" {
+  description = "Enable CloudWatch Container Insights for the ECS cluster"
+  type        = bool
+  default     = true
+}
+
+variable "ecs_ec2_spot_price" {
+  description = "The maximum price per hour for ECS spot instances (only used when ecs_launch_type is EC2, leave null for on-demand)"
+  type        = string
+  default     = null
+}
+
+variable "ecs_ebs_volume_size" {
+  description = "Size of the EBS volume for ECS EC2 instances in GB (only used when ecs_launch_type is EC2)"
+  type        = number
+  default     = 30
+}
+
+variable "ecs_ebs_volume_type" {
+  description = "Type of the EBS volume for ECS EC2 instances (only used when ecs_launch_type is EC2)"
+  type        = string
+  default     = "gp3"
 }
 
 variable "tags" {

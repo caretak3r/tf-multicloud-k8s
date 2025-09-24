@@ -1,33 +1,33 @@
 # VPC Module
 module "vpc" {
   source = "./vpc"
-  count  = var.create_vpc ? 1 : 0
+  count  = var.vpc_id == "" ? 1 : 0
 
-  name_prefix               = var.cluster_name
-  vpc_cidr                  = var.vpc_cidr
-  availability_zones_count  = var.availability_zones_count
-  enable_private_subnets    = true
-  enable_public_subnets     = var.enable_bastion || var.enable_nat_gateway
-  enable_nat_gateway        = var.enable_nat_gateway
-  enable_vpc_endpoints      = var.enable_vpc_endpoints
+  name_prefix              = var.cluster_name
+  vpc_cidr                 = var.vpc_cidr
+  availability_zones_count = var.availability_zones_count
+  enable_private_subnets   = true
+  enable_public_subnets    = var.enable_bastion || var.enable_nat_gateway
+  enable_nat_gateway       = var.enable_nat_gateway
+  enable_vpc_endpoints     = var.enable_vpc_endpoints
 
   tags = var.tags
 }
 
 # Use existing VPC data if not creating new one
 data "aws_vpc" "existing" {
-  count = var.create_vpc ? 0 : 1
-  id    = var.existing_vpc_id
+  count = var.vpc_id != "" ? 1 : 0
+  id    = var.vpc_id
 }
 
 data "aws_subnets" "existing_private" {
-  count = var.create_vpc ? 0 : 1
-  
+  count = var.vpc_id != "" && length(var.private_subnet_ids) == 0 ? 1 : 0
+
   filter {
     name   = "vpc-id"
-    values = [var.existing_vpc_id]
+    values = [var.vpc_id]
   }
-  
+
   filter {
     name   = "tag:Type"
     values = ["private"]
@@ -35,13 +35,13 @@ data "aws_subnets" "existing_private" {
 }
 
 data "aws_subnets" "existing_public" {
-  count = var.create_vpc ? 0 : 1
-  
+  count = var.vpc_id != "" && length(var.public_subnet_ids) == 0 ? 1 : 0
+
   filter {
     name   = "vpc-id"
-    values = [var.existing_vpc_id]
+    values = [var.vpc_id]
   }
-  
+
   filter {
     name   = "tag:Type"
     values = ["public"]
@@ -50,10 +50,21 @@ data "aws_subnets" "existing_public" {
 
 # Local values for VPC resources
 locals {
-  vpc_id              = var.create_vpc ? module.vpc[0].vpc_id : data.aws_vpc.existing[0].id
-  vpc_cidr_block      = var.create_vpc ? module.vpc[0].vpc_cidr_block : data.aws_vpc.existing[0].cidr_block
-  private_subnet_ids  = var.create_vpc ? module.vpc[0].private_subnet_ids : data.aws_subnets.existing_private[0].ids
-  public_subnet_ids   = var.create_vpc ? module.vpc[0].public_subnet_ids : data.aws_subnets.existing_public[0].ids
+  # VPC ID: use provided, or create new
+  vpc_id = var.vpc_id != "" ? var.vpc_id : module.vpc[0].vpc_id
+
+  # VPC CIDR: from existing VPC or created VPC
+  vpc_cidr_block = var.vpc_id != "" ? data.aws_vpc.existing[0].cidr_block : module.vpc[0].vpc_cidr_block
+
+  # Private subnets: use provided, discover from tags, or create new
+  private_subnet_ids = length(var.private_subnet_ids) > 0 ? var.private_subnet_ids : (
+    var.vpc_id != "" ? data.aws_subnets.existing_private[0].ids : module.vpc[0].private_subnet_ids
+  )
+
+  # Public subnets: use provided, discover from tags, or create new  
+  public_subnet_ids = length(var.public_subnet_ids) > 0 ? var.public_subnet_ids : (
+    var.vpc_id != "" ? data.aws_subnets.existing_public[0].ids : module.vpc[0].public_subnet_ids
+  )
 }
 
 # Bastion Host Module (optional)
@@ -75,24 +86,24 @@ module "bastion" {
   tags = var.tags
 }
 
-# EKS Cluster Module
+# EKS Cluster Module - Completely separate from ECS
 module "eks" {
   source = "./eks"
-  count  = var.enable_eks ? 1 : 0
+  count  = var.enable_eks && !var.enable_ecs ? 1 : 0 # EKS only when ECS is disabled
 
-  cluster_name               = var.cluster_name
-  vpc_id                     = local.vpc_id
-  vpc_cidr_block             = local.vpc_cidr_block
-  private_subnet_ids         = local.private_subnet_ids
-  node_size_config           = var.node_size_config
-  kubernetes_version         = var.kubernetes_version
-  ami_type                   = var.ami_type
-  capacity_type              = var.capacity_type
-  enabled_cluster_log_types  = var.enabled_cluster_log_types
-  log_retention_in_days      = var.log_retention_in_days
-  bastion_security_group_id  = var.enable_bastion ? module.bastion[0].bastion_security_group_id : null
-  node_ssh_key_name          = var.node_ssh_key_name
-  addon_versions             = var.addon_versions
+  cluster_name              = var.cluster_name
+  vpc_id                    = local.vpc_id
+  vpc_cidr_block            = local.vpc_cidr_block
+  private_subnet_ids        = local.private_subnet_ids
+  node_size_config          = var.node_size_config
+  kubernetes_version        = var.kubernetes_version
+  ami_type                  = var.ami_type
+  capacity_type             = var.capacity_type
+  enabled_cluster_log_types = var.enabled_cluster_log_types
+  log_retention_in_days     = var.log_retention_in_days
+  bastion_security_group_id = var.enable_bastion ? module.bastion[0].bastion_security_group_id : null
+  node_ssh_key_name         = var.node_ssh_key_name
+  addon_versions            = var.addon_versions
 
   tags = var.tags
 
@@ -104,26 +115,36 @@ module "ecs" {
   source = "./ecs"
   count  = var.enable_ecs ? 1 : 0
 
-  cluster_name              = var.cluster_name
-  vpc_id                    = local.vpc_id
-  private_subnet_ids        = local.private_subnet_ids
-  region                    = var.region
-  container_image           = var.ecs_container_image
-  container_port            = var.ecs_container_port
-  secrets_sidecar_image     = var.ecs_secrets_sidecar_image
-  task_cpu                  = var.ecs_task_cpu
-  task_memory               = var.ecs_task_memory
-  desired_count             = var.ecs_desired_count
-  environment_variables     = var.ecs_environment_variables
-  secrets                   = var.ecs_secrets
-  secrets_prefix            = var.ecs_secrets_prefix
-  acm_certificate_arn       = var.ecs_acm_certificate_arn
-  create_self_signed_cert   = var.ecs_create_self_signed_cert
-  domain_name               = var.ecs_domain_name
-  enable_secrets_sidecar    = var.ecs_enable_secrets_sidecar
-  alb_security_group_ids    = []  # Will be updated after ALB creation
-  target_group_arn          = null  # Will be updated after ALB creation
-  log_retention_in_days     = var.log_retention_in_days
+  cluster_name            = var.cluster_name
+  vpc_id                  = local.vpc_id
+  private_subnet_ids      = local.private_subnet_ids
+  region                  = var.region
+  container_image         = var.ecs_container_image
+  container_port          = var.ecs_container_port
+  secrets_sidecar_image   = var.ecs_secrets_sidecar_image
+  task_cpu                = var.ecs_task_cpu
+  task_memory             = var.ecs_task_memory
+  desired_count           = var.ecs_desired_count
+  environment_variables   = var.ecs_environment_variables
+  secrets                 = var.ecs_secrets
+  secrets_prefix          = var.ecs_secrets_prefix
+  acm_certificate_arn     = var.ecs_acm_certificate_arn
+  create_self_signed_cert = var.ecs_create_self_signed_cert
+  domain_name             = var.ecs_domain_name
+  enable_secrets_sidecar  = var.ecs_enable_secrets_sidecar
+  log_retention_in_days   = var.log_retention_in_days
+
+  # EC2 Launch Type Variables
+  launch_type               = var.ecs_launch_type
+  instance_type             = var.ecs_instance_type
+  min_size                  = var.ecs_min_size
+  max_size                  = var.ecs_max_size
+  desired_capacity          = var.ecs_desired_capacity
+  key_name                  = var.ecs_key_name
+  enable_container_insights = var.ecs_enable_container_insights
+  ec2_spot_price            = var.ecs_ec2_spot_price
+  ebs_volume_size           = var.ecs_ebs_volume_size
+  ebs_volume_type           = var.ecs_ebs_volume_type
 
   tags = var.tags
 
@@ -135,19 +156,19 @@ module "alb" {
   source = "./alb"
   count  = var.enable_ecs ? 1 : 0
 
-  cluster_name              = var.cluster_name
-  vpc_id                    = local.vpc_id
-  public_subnet_ids         = local.public_subnet_ids
-  private_subnet_ids        = local.private_subnet_ids
-  certificate_arn           = var.ecs_acm_certificate_arn != null ? var.ecs_acm_certificate_arn : module.ecs[0].certificate_arn
-  target_port               = var.ecs_container_port
-  health_check_path         = var.ecs_health_check_path
-  internal_alb              = var.ecs_internal_alb
-  allowed_cidr_blocks       = var.ecs_allowed_cidr_blocks
-  ssl_policy                = var.ecs_ssl_policy
+  cluster_name               = var.cluster_name
+  vpc_id                     = local.vpc_id
+  public_subnet_ids          = local.public_subnet_ids
+  private_subnet_ids         = local.private_subnet_ids
+  certificate_arn            = var.ecs_acm_certificate_arn != null ? var.ecs_acm_certificate_arn : module.ecs[0].certificate_arn
+  target_port                = var.ecs_container_port
+  health_check_path          = var.ecs_health_check_path
+  internal_alb               = var.ecs_internal_alb
+  allowed_cidr_blocks        = var.ecs_allowed_cidr_blocks
+  ssl_policy                 = var.ecs_ssl_policy
   enable_deletion_protection = var.ecs_enable_deletion_protection
-  enable_waf                = var.ecs_enable_waf
-  rate_limit_per_5min       = var.ecs_rate_limit_per_5min
+  enable_waf                 = var.ecs_enable_waf
+  rate_limit_per_5min        = var.ecs_rate_limit_per_5min
 
   tags = var.tags
 
@@ -174,12 +195,25 @@ resource "aws_ecs_service" "main_with_alb" {
   cluster         = module.ecs[0].cluster_id
   task_definition = module.ecs[0].task_definition_arn
   desired_count   = var.ecs_desired_count
-  launch_type     = "FARGATE"
+  launch_type     = var.ecs_launch_type
 
-  network_configuration {
-    security_groups  = [module.ecs[0].security_group_id]
-    subnets          = local.private_subnet_ids
-    assign_public_ip = false
+  # Network configuration - only for Fargate launch type
+  dynamic "network_configuration" {
+    for_each = var.ecs_launch_type == "FARGATE" ? [1] : []
+    content {
+      security_groups  = [module.ecs[0].security_group_id]
+      subnets          = local.private_subnet_ids
+      assign_public_ip = false
+    }
+  }
+
+  # Placement constraints for EC2 launch type
+  dynamic "placement_constraints" {
+    for_each = var.ecs_launch_type == "EC2" ? [1] : []
+    content {
+      type       = "memberOf"
+      expression = "attribute:ecs.instance-type =~ t3.*"
+    }
   }
 
   load_balancer {

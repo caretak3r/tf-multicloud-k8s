@@ -14,10 +14,10 @@ cluster_name   = "multi-service-cluster"
 environment    = "production"
 
 # Module Control
-enable_eks         = false
-enable_ecs         = true
-enable_bastion     = true
-enable_nat_gateway = true
+enable_eks           = false
+enable_ecs           = true
+enable_bastion       = true
+enable_nat_gateway   = true
 enable_vpc_endpoints = true
 
 # VPC Configuration
@@ -30,26 +30,26 @@ availability_zones_count = 3
 # ============================================================================
 
 # Service 1: ECR Image and Resources
-ecs_container_image         = "123456789012.dkr.ecr.us-west-2.amazonaws.com/main-app:latest"
-ecs_container_port          = 50001
-ecs_task_cpu                = 4096  # 4 vCPU
-ecs_task_memory             = 4096  # 4GB RAM
-ecs_desired_count           = 2
-ecs_enable_secrets_sidecar  = true  # Enable secrets sidecar for main app
+ecs_container_image        = "123456789012.dkr.ecr.us-west-2.amazonaws.com/main-app:latest"
+ecs_container_port         = 50001
+ecs_task_cpu               = 4096 # 4 vCPU
+ecs_task_memory            = 4096 # 4GB RAM
+ecs_desired_count          = 2
+ecs_enable_secrets_sidecar = true # Enable secrets sidecar for main app
 
 # Service 1: Secrets Configuration
 ecs_secrets_prefix = "main-app/"
 ecs_secrets = {
   database_url        = "postgresql://user:pass@db.internal:5432/mainapp"
-  redis_url          = "redis://redis.internal:6379"
-  api_key            = "sk-1234567890abcdef"
-  jwt_secret         = "super-secret-jwt-signing-key"
-  encryption_key     = "32-char-encryption-key-for-aes256"
-  oauth_client_id    = "oauth_app_client_id"
+  redis_url           = "redis://redis.internal:6379"
+  api_key             = "sk-1234567890abcdef"
+  jwt_secret          = "super-secret-jwt-signing-key"
+  encryption_key      = "32-char-encryption-key-for-aes256"
+  oauth_client_id     = "oauth_app_client_id"
   oauth_client_secret = "oauth_app_client_secret"
-  smtp_password      = "email-service-password"
-  s3_access_key      = "AKIA1234567890123456"
-  s3_secret_key      = "abcdefghijklmnopqrstuvwxyz1234567890ABCD"
+  smtp_password       = "email-service-password"
+  s3_access_key       = "AKIA1234567890123456"
+  s3_secret_key       = "abcdefghijklmnopqrstuvwxyz1234567890ABCD"
 }
 
 # Service 1: Environment Variables
@@ -59,7 +59,7 @@ ecs_environment_variables = [
     value = "production"
   },
   {
-    name  = "LOG_LEVEL" 
+    name  = "LOG_LEVEL"
     value = "info"
   },
   {
@@ -81,17 +81,17 @@ ecs_environment_variables = [
 ]
 
 # Service 1: ALB and Certificate Configuration
-ecs_health_check_path = "/api/health"
-ecs_internal_alb      = false
+ecs_health_check_path   = "/api/health"
+ecs_internal_alb        = false
 ecs_allowed_cidr_blocks = ["0.0.0.0/0"]
 
 # Service 1: Certificate (self-signed for demo)
 ecs_create_self_signed_cert = true
-ecs_domain_name            = "api.example.com"
+ecs_domain_name             = "api.example.com"
 
 # Service 1: Security Configuration
-ecs_enable_waf              = true
-ecs_rate_limit_per_5min     = 2000
+ecs_enable_waf                 = true
+ecs_rate_limit_per_5min        = 2000
 ecs_enable_deletion_protection = false
 
 # ============================================================================  
@@ -143,10 +143,10 @@ bastion_allowed_ssh_cidr_blocks = ["203.0.113.0/24"]
 log_retention_in_days = 30
 
 tags = {
-  Environment   = "production"
-  Project      = "multi-service-deployment"
-  ManagedBy    = "terraform"
-  CostCenter   = "engineering"
+  Environment = "production"
+  Project     = "multi-service-deployment"
+  ManagedBy   = "terraform"
+  CostCenter  = "engineering"
 }
 
 # ============================================================================

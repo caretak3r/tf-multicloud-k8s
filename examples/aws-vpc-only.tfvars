@@ -1,7 +1,7 @@
 # Example: VPC and networking only (no EKS)
-cluster_name  = "my-network-foundation"
-region        = "us-east-1"
-environment   = "staging"
+cluster_name = "my-network-foundation"
+region       = "us-east-1"
+environment  = "staging"
 
 # Create VPC only
 create_vpc     = true
