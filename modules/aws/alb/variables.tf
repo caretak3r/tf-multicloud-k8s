@@ -38,7 +38,7 @@ variable "health_check_path" {
 variable "internal_alb" {
   description = "Whether the ALB should be internal (private)"
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "allowed_cidr_blocks" {

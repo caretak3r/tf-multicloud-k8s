@@ -27,3 +27,13 @@ output "waf_web_acl_arn" {
   description = "ARN of the WAF Web ACL (if enabled)"
   value       = var.enable_waf ? aws_wafv2_web_acl.main[0].arn : null
 }
+
+output "selected_subnet_ids" {
+  description = "List of subnet IDs selected for the ALB (unique AZs)"
+  value       = local.unique_az_subnets
+}
+
+output "selected_availability_zones" {
+  description = "List of availability zones for the selected subnets"
+  value       = distinct([for subnet in data.aws_subnet.selected : subnet.availability_zone])
+}

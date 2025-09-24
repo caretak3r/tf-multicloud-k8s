@@ -15,7 +15,7 @@ resource "aws_ecs_cluster_capacity_providers" "main" {
   cluster_name = aws_ecs_cluster.main.name
   capacity_providers = var.launch_type == "FARGATE" ? [
     "FARGATE", "FARGATE_SPOT"
-  ] : [
+    ] : [
     aws_ecs_capacity_provider.ec2[0].name
   ]
 
@@ -140,18 +140,18 @@ resource "aws_iam_role_policy_attachment" "ecs_instance_role_policy" {
 
 # IAM Instance Profile for ECS instances
 resource "aws_iam_instance_profile" "ecs_instance_profile" {
-  count = var.launch_type == "EC2" ? 1 : 0
+  count       = var.launch_type == "EC2" ? 1 : 0
   name_prefix = "${var.cluster_name}-ecs-instance-"
-  role = aws_iam_role.ecs_instance_role[0].name
+  role        = aws_iam_role.ecs_instance_role[0].name
 
   tags = var.tags
 }
 
 # Launch Template for ECS EC2 instances
 resource "aws_launch_template" "ecs_instances" {
-  count       = var.launch_type == "EC2" ? 1 : 0
-  name_prefix = "${var.cluster_name}-ecs-"
-  image_id    = data.aws_ami.ecs_optimized[0].id
+  count         = var.launch_type == "EC2" ? 1 : 0
+  name_prefix   = "${var.cluster_name}-ecs-"
+  image_id      = data.aws_ami.ecs_optimized[0].id
   instance_type = var.instance_type
 
   key_name = var.key_name
@@ -165,9 +165,9 @@ resource "aws_launch_template" "ecs_instances" {
   block_device_mappings {
     device_name = "/dev/xvda"
     ebs {
-      volume_size = var.ebs_volume_size
-      volume_type = var.ebs_volume_type
-      encrypted   = true
+      volume_size           = var.ebs_volume_size
+      volume_type           = var.ebs_volume_type
+      encrypted             = true
       delete_on_termination = true
     }
   }
@@ -365,8 +365,8 @@ resource "aws_secretsmanager_secret" "app_secrets" {
 }
 
 resource "aws_secretsmanager_secret_version" "app_secrets" {
-  count     = length(var.secrets) > 0 ? 1 : 0
-  secret_id = aws_secretsmanager_secret.app_secrets[0].id
+  count         = length(var.secrets) > 0 ? 1 : 0
+  secret_id     = aws_secretsmanager_secret.app_secrets[0].id
   secret_string = jsonencode(var.secrets)
 }
 
@@ -390,7 +390,7 @@ resource "tls_self_signed_cert" "self_signed" {
 
   allowed_uses = [
     "key_encipherment",
-    "digital_signature", 
+    "digital_signature",
     "server_auth",
   ]
 }
@@ -427,22 +427,22 @@ resource "aws_ecs_task_definition" "main" {
   family                   = var.cluster_name
   network_mode             = var.launch_type == "FARGATE" ? "awsvpc" : "bridge"
   requires_compatibilities = [var.launch_type]
-  
+
   # CPU and memory are only required for Fargate
   cpu    = var.launch_type == "FARGATE" ? var.task_cpu : null
   memory = var.launch_type == "FARGATE" ? var.task_memory : null
-  
+
   execution_role_arn = aws_iam_role.ecs_task_execution_role.arn
   task_role_arn      = aws_iam_role.ecs_task_role.arn
 
   container_definitions = jsonencode(concat(
     var.enable_secrets_sidecar ? [
       {
-        name  = "secrets-sidecar"
-        image = var.secrets_sidecar_image
+        name      = "secrets-sidecar"
+        image     = var.secrets_sidecar_image
         essential = false
-        cpu = var.launch_type == "EC2" ? 256 : null
-        memory = var.launch_type == "EC2" ? 512 : null
+        cpu       = var.launch_type == "EC2" ? 256 : null
+        memory    = var.launch_type == "EC2" ? 512 : null
         portMappings = [
           {
             containerPort = 8080
@@ -482,8 +482,8 @@ resource "aws_ecs_task_definition" "main" {
         name      = "app"
         image     = var.container_image
         essential = true
-        cpu = var.launch_type == "EC2" ? var.task_cpu : null
-        memory = var.launch_type == "EC2" ? var.task_memory : null
+        cpu       = var.launch_type == "EC2" ? var.task_cpu : null
+        memory    = var.launch_type == "EC2" ? var.task_memory : null
         portMappings = [
           {
             containerPort = var.container_port

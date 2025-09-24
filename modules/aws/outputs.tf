@@ -142,6 +142,6 @@ output "security_notes" {
     vpc_endpoints_enabled   = var.enable_vpc_endpoints ? "VPC endpoints enabled for private AWS API access" : "VPC endpoints disabled"
     bastion_required        = var.enable_eks && !var.enable_bastion ? "Bastion host or VPN required to access EKS cluster" : "Access configured"
     nat_gateway_enabled     = var.enable_nat_gateway ? "NAT Gateway enabled for outbound internet access" : "No outbound internet access from private subnets"
-    waf_enabled            = var.enable_ecs && var.ecs_enable_waf ? "AWS WAF enabled for ECS ALB protection" : "WAF protection disabled or ECS not deployed"
+    waf_enabled             = var.enable_ecs && var.ecs_enable_waf ? "AWS WAF enabled for ECS ALB protection" : "WAF protection disabled or ECS not deployed"
   }
 }
