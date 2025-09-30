@@ -136,6 +136,7 @@ module "ecs" {
 
   # EC2 Launch Type Variables
   launch_type               = var.ecs_launch_type
+  node_size_config          = var.node_size_config
   instance_type             = var.ecs_instance_type
   min_size                  = var.ecs_min_size
   max_size                  = var.ecs_max_size
@@ -162,6 +163,7 @@ module "alb" {
   private_subnet_ids         = local.private_subnet_ids
   certificate_arn            = var.ecs_acm_certificate_arn != null ? var.ecs_acm_certificate_arn : module.ecs[0].certificate_arn
   target_port                = var.ecs_container_port
+  target_type                = var.ecs_launch_type == "EC2" ? "instance" : "ip"
   health_check_path          = var.ecs_health_check_path
   internal_alb               = var.ecs_internal_alb
   allowed_cidr_blocks        = var.ecs_allowed_cidr_blocks
@@ -195,7 +197,19 @@ resource "aws_ecs_service" "main_with_alb" {
   cluster         = module.ecs[0].cluster_id
   task_definition = module.ecs[0].task_definition_arn
   desired_count   = var.ecs_desired_count
-  launch_type     = var.ecs_launch_type
+  
+  # Use launch_type only for Fargate
+  launch_type = var.ecs_launch_type == "FARGATE" ? "FARGATE" : null
+
+  # Use capacity provider strategy for EC2
+  dynamic "capacity_provider_strategy" {
+    for_each = var.ecs_launch_type == "EC2" ? [1] : []
+    content {
+      capacity_provider = module.ecs[0].capacity_provider_name
+      weight            = 100
+      base              = 1
+    }
+  }
 
   # Network configuration - only for Fargate launch type
   dynamic "network_configuration" {
@@ -204,15 +218,6 @@ resource "aws_ecs_service" "main_with_alb" {
       security_groups  = [module.ecs[0].security_group_id]
       subnets          = local.private_subnet_ids
       assign_public_ip = false
-    }
-  }
-
-  # Placement constraints for EC2 launch type
-  dynamic "placement_constraints" {
-    for_each = var.ecs_launch_type == "EC2" ? [1] : []
-    content {
-      type       = "memberOf"
-      expression = "attribute:ecs.instance-type =~ t3.*"
     }
   }
 

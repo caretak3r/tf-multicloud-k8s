@@ -1,21 +1,21 @@
 locals {
   node_size_map = {
     small = {
-      instance_types = ["t3.medium"]
+      instance_types = ["c5.large"]
       desired_size   = 2
       min_size       = 1
       max_size       = 5
       disk_size      = 20
     }
     medium = {
-      instance_types = ["t3.large"]
+      instance_types = ["c5.xlarge"]
       desired_size   = 3
       min_size       = 2
       max_size       = 10
       disk_size      = 30
     }
     large = {
-      instance_types = ["t3.xlarge"]
+      instance_types = ["c5.2xlarge"]
       desired_size   = 5
       min_size       = 3
       max_size       = 20

@@ -71,6 +71,16 @@ variable "rate_limit_per_5min" {
   default     = 2000
 }
 
+variable "target_type" {
+  description = "Target type for the ALB target group (ip for Fargate, instance for EC2)"
+  type        = string
+  default     = "ip"
+  validation {
+    condition     = contains(["ip", "instance"], var.target_type)
+    error_message = "Target type must be either 'ip' or 'instance'."
+  }
+}
+
 variable "tags" {
   description = "Tags to apply to resources"
   type        = map(string)

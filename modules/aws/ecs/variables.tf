@@ -132,28 +132,38 @@ variable "launch_type" {
   }
 }
 
-variable "instance_type" {
-  description = "EC2 instance type for ECS container instances (only used when launch_type is EC2)"
+variable "node_size_config" {
+  description = "Node size configuration for ECS EC2 instances: small, medium, or large"
   type        = string
-  default     = "t3.medium"
+  default     = "small"
+  validation {
+    condition     = contains(["small", "medium", "large"], var.node_size_config)
+    error_message = "Node size config must be 'small', 'medium', or 'large'."
+  }
+}
+
+variable "instance_type" {
+  description = "EC2 instance type for ECS container instances (only used when launch_type is EC2, overrides node_size_config)"
+  type        = string
+  default     = null
 }
 
 variable "min_size" {
-  description = "Minimum number of EC2 instances in the Auto Scaling Group (only used when launch_type is EC2)"
+  description = "Minimum number of EC2 instances in the Auto Scaling Group (only used when launch_type is EC2, overrides node_size_config)"
   type        = number
-  default     = 1
+  default     = null
 }
 
 variable "max_size" {
-  description = "Maximum number of EC2 instances in the Auto Scaling Group (only used when launch_type is EC2)"
+  description = "Maximum number of EC2 instances in the Auto Scaling Group (only used when launch_type is EC2, overrides node_size_config)"
   type        = number
-  default     = 3
+  default     = null
 }
 
 variable "desired_capacity" {
-  description = "Desired number of EC2 instances in the Auto Scaling Group (only used when launch_type is EC2)"
+  description = "Desired number of EC2 instances in the Auto Scaling Group (only used when launch_type is EC2, overrides node_size_config)"
   type        = number
-  default     = 2
+  default     = null
 }
 
 variable "key_name" {
@@ -175,9 +185,9 @@ variable "ec2_spot_price" {
 }
 
 variable "ebs_volume_size" {
-  description = "Size of the EBS volume for EC2 instances in GB (only used when launch_type is EC2)"
+  description = "Size of the EBS volume for EC2 instances in GB (only used when launch_type is EC2, overrides node_size_config)"
   type        = number
-  default     = 30
+  default     = null
 }
 
 variable "ebs_volume_type" {

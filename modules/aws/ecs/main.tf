@@ -1,3 +1,40 @@
+locals {
+  # Configuration map for EC2 instance types (same as EKS)
+  node_size_map = {
+    small = {
+      instance_type    = "c5.large"
+      desired_capacity = 2
+      min_size         = 1
+      max_size         = 5
+      disk_size        = 20
+    }
+    medium = {
+      instance_type    = "c5.xlarge"
+      desired_capacity = 3
+      min_size         = 2
+      max_size         = 10
+      disk_size        = 30
+    }
+    large = {
+      instance_type    = "c5.2xlarge"
+      desired_capacity = 5
+      min_size         = 3
+      max_size         = 20
+      disk_size        = 50
+    }
+  }
+
+  # Use node_size_config if no explicit values provided
+  node_config = var.launch_type == "EC2" ? local.node_size_map[var.node_size_config] : {}
+
+  # Final configuration (explicit values override node_size_config)
+  final_instance_type    = var.launch_type == "EC2" ? (var.instance_type != null ? var.instance_type : local.node_config.instance_type) : null
+  final_desired_capacity = var.launch_type == "EC2" ? (var.desired_capacity != null ? var.desired_capacity : local.node_config.desired_capacity) : null
+  final_min_size         = var.launch_type == "EC2" ? (var.min_size != null ? var.min_size : local.node_config.min_size) : null
+  final_max_size         = var.launch_type == "EC2" ? (var.max_size != null ? var.max_size : local.node_config.max_size) : null
+  final_disk_size        = var.launch_type == "EC2" ? (var.ebs_volume_size != null ? var.ebs_volume_size : local.node_config.disk_size) : null
+}
+
 # ECS Cluster
 resource "aws_ecs_cluster" "main" {
   name = var.cluster_name
@@ -152,7 +189,7 @@ resource "aws_launch_template" "ecs_instances" {
   count         = var.launch_type == "EC2" ? 1 : 0
   name_prefix   = "${var.cluster_name}-ecs-"
   image_id      = data.aws_ami.ecs_optimized[0].id
-  instance_type = var.instance_type
+  instance_type = local.final_instance_type
 
   key_name = var.key_name
 
@@ -165,7 +202,7 @@ resource "aws_launch_template" "ecs_instances" {
   block_device_mappings {
     device_name = "/dev/xvda"
     ebs {
-      volume_size           = var.ebs_volume_size
+      volume_size           = local.final_disk_size
       volume_type           = var.ebs_volume_type
       encrypted             = true
       delete_on_termination = true
@@ -195,9 +232,9 @@ resource "aws_autoscaling_group" "ecs_instances" {
   count               = var.launch_type == "EC2" ? 1 : 0
   name                = "${var.cluster_name}-ecs-asg"
   vpc_zone_identifier = var.private_subnet_ids
-  min_size            = var.min_size
-  max_size            = var.max_size
-  desired_capacity    = var.desired_capacity
+  min_size            = local.final_min_size
+  max_size            = local.final_max_size
+  desired_capacity    = local.final_desired_capacity
 
   launch_template {
     id      = aws_launch_template.ecs_instances[0].id
