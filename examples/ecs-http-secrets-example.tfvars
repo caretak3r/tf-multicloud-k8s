@@ -13,10 +13,10 @@ cluster_name   = "http-secrets-cluster"
 environment    = "development"
 
 # Module Control
-enable_eks         = false
-enable_ecs         = true
-enable_bastion     = true
-enable_nat_gateway = true
+enable_eks           = false
+enable_ecs           = true
+enable_bastion       = true
+enable_nat_gateway   = true
 enable_vpc_endpoints = true
 
 # VPC Configuration
@@ -29,20 +29,20 @@ availability_zones_count = 2
 # ============================================================================
 
 # Container Configuration
-ecs_container_image = "nginx:latest"  # Replace with your HTTP server image
-ecs_container_port  = 443             # HTTPS port for secure communication
-ecs_task_cpu        = 512             # 0.5 vCPU
-ecs_task_memory     = 1024            # 1GB RAM
+ecs_container_image = "nginx:latest" # Replace with your HTTP server image
+ecs_container_port  = 443            # HTTPS port for secure communication
+ecs_task_cpu        = 512            # 0.5 vCPU
+ecs_task_memory     = 1024           # 1GB RAM
 ecs_desired_count   = 2
 
 # Enable Secrets Sidecar
 ecs_enable_secrets_sidecar = true
-ecs_secrets_sidecar_image = "amazon/aws-cli:latest"  # Replace with secrets sidecar image
+ecs_secrets_sidecar_image  = "amazon/aws-cli:latest" # Replace with secrets sidecar image
 
 # Secrets Configuration - These will be created in AWS Secrets Manager
 ecs_secrets_prefix = "http-server/"
 ecs_secrets = {
-  database_password    = "my-secure-db-password"
+  database_password   = "my-secure-db-password"
   api_key             = "sk-1234567890abcdefghijklmnop"
   jwt_signing_key     = "super-secret-jwt-key-for-token-signing"
   redis_password      = "redis-secure-password-123"
@@ -100,26 +100,26 @@ ecs_environment_variables = [
 ecs_health_check_path = "/health"
 
 # Load Balancer Configuration
-ecs_internal_alb        = false                # Public-facing ALB
-ecs_allowed_cidr_blocks = ["0.0.0.0/0"]       # Allow all traffic (adjust for production)
+ecs_internal_alb        = false         # Public-facing ALB
+ecs_allowed_cidr_blocks = ["0.0.0.0/0"] # Allow all traffic (adjust for production)
 
 # SSL Certificate Configuration
 ecs_create_self_signed_cert = true
-ecs_domain_name            = "http-server.example.local"
+ecs_domain_name             = "http-server.example.local"
 
 # Security Configuration
-ecs_enable_waf                = true
-ecs_rate_limit_per_5min       = 1000
+ecs_enable_waf                 = true
+ecs_rate_limit_per_5min        = 1000
 ecs_enable_deletion_protection = false
-ecs_ssl_policy                = "ELBSecurityPolicy-TLS-1-2-2017-01"
+ecs_ssl_policy                 = "ELBSecurityPolicy-TLS-1-2-2017-01"
 
 # ============================================================================
 # BASTION HOST CONFIGURATION
 # ============================================================================
 
-bastion_key_name                = "my-key-pair"              # Create this key pair in AWS first
+bastion_key_name                = "my-key-pair" # Create this key pair in AWS first
 bastion_instance_type           = "t3.micro"
-bastion_allowed_ssh_cidr_blocks = ["0.0.0.0/0"]             # Restrict to your IP in production
+bastion_allowed_ssh_cidr_blocks = ["0.0.0.0/0"] # Restrict to your IP in production
 
 # ============================================================================
 # SHARED CONFIGURATION

@@ -22,7 +22,7 @@ locals {
       disk_size      = 50
     }
   }
-  
+
   node_config = local.node_size_map[var.node_size_config]
 }
 
@@ -34,15 +34,7 @@ resource "aws_security_group" "cluster" {
   description = "Security group for EKS cluster control plane"
   vpc_id      = var.vpc_id
 
-  # Allow HTTPS traffic from nodes and bastion (if enabled)
-  ingress {
-    from_port       = 443
-    to_port         = 443
-    protocol        = "tcp"
-    security_groups = [aws_security_group.nodes.id]
-    description     = "Allow HTTPS from worker nodes"
-  }
-
+  # Bastion access (if enabled)
   dynamic "ingress" {
     for_each = var.bastion_security_group_id != null ? [1] : []
     content {
@@ -85,20 +77,20 @@ resource "aws_security_group" "nodes" {
 
   # Allow all traffic between nodes
   ingress {
-    from_port = 0
-    to_port   = 65535
-    protocol  = "tcp"
-    self      = true
+    from_port   = 0
+    to_port     = 65535
+    protocol    = "tcp"
+    self        = true
     description = "Allow all TCP traffic between worker nodes"
   }
 
-  # Allow traffic from cluster control plane
+  # Allow traffic from VPC CIDR (including control plane)
   ingress {
-    from_port       = 0
-    to_port         = 65535
-    protocol        = "tcp"
-    security_groups = [aws_security_group.cluster.id]
-    description     = "Allow all TCP traffic from cluster control plane"
+    from_port   = 0
+    to_port     = 65535
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr_block]
+    description = "Allow all TCP traffic from VPC (including control plane)"
   }
 
   # Allow SSH from bastion if enabled
@@ -199,7 +191,7 @@ resource "aws_iam_role_policy_attachment" "nodes_AmazonEC2ContainerRegistryReadO
 # KMS key for EKS cluster encryption
 resource "aws_kms_key" "cluster" {
   description = "EKS Secret Encryption Key for ${var.cluster_name}"
-  
+
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -226,7 +218,7 @@ resource "aws_kms_key" "cluster" {
       }
     ]
   })
-  
+
   tags = var.tags
 }
 
@@ -240,7 +232,7 @@ resource "aws_cloudwatch_log_group" "cluster" {
   name              = "/aws/eks/${var.cluster_name}/cluster"
   retention_in_days = var.log_retention_in_days
   kms_key_id        = aws_kms_key.cluster.arn
-  
+
   tags = var.tags
 }
 
@@ -254,7 +246,7 @@ resource "aws_eks_cluster" "main" {
     subnet_ids              = var.private_subnet_ids
     security_group_ids      = [aws_security_group.cluster.id]
     endpoint_private_access = true
-    endpoint_public_access  = false  # Private only!
+    endpoint_public_access  = false # Private only!
   }
 
   enabled_cluster_log_types = var.enabled_cluster_log_types
@@ -315,39 +307,50 @@ resource "aws_eks_node_group" "main" {
 
 # EKS Add-ons
 resource "aws_eks_addon" "cni" {
-  cluster_name             = aws_eks_cluster.main.name
-  addon_name               = "vpc-cni"
-  addon_version            = var.addon_versions.vpc_cni
+  cluster_name                = aws_eks_cluster.main.name
+  addon_name                  = "vpc-cni"
+  addon_version               = var.addon_versions.vpc_cni
   resolve_conflicts_on_create = "OVERWRITE"
-  
+
   tags = var.tags
 }
 
 resource "aws_eks_addon" "coredns" {
-  cluster_name             = aws_eks_cluster.main.name
-  addon_name               = "coredns"
-  addon_version            = var.addon_versions.coredns
+  cluster_name                = aws_eks_cluster.main.name
+  addon_name                  = "coredns"
+  addon_version               = var.addon_versions.coredns
   resolve_conflicts_on_create = "OVERWRITE"
-  
+
   tags = var.tags
 
   depends_on = [aws_eks_node_group.main]
 }
 
 resource "aws_eks_addon" "kube_proxy" {
-  cluster_name             = aws_eks_cluster.main.name
-  addon_name               = "kube-proxy"
-  addon_version            = var.addon_versions.kube_proxy
+  cluster_name                = aws_eks_cluster.main.name
+  addon_name                  = "kube-proxy"
+  addon_version               = var.addon_versions.kube_proxy
   resolve_conflicts_on_create = "OVERWRITE"
-  
+
   tags = var.tags
 }
 
+# Security Group Rule: Allow nodes to communicate with cluster control plane
+resource "aws_security_group_rule" "nodes_to_cluster" {
+  type                     = "ingress"
+  from_port                = 443
+  to_port                  = 443
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.nodes.id
+  security_group_id        = aws_security_group.cluster.id
+  description              = "Allow HTTPS from worker nodes to control plane"
+}
+
 resource "aws_eks_addon" "ebs_csi" {
-  cluster_name             = aws_eks_cluster.main.name
-  addon_name               = "aws-ebs-csi-driver"
-  addon_version            = var.addon_versions.ebs_csi
+  cluster_name                = aws_eks_cluster.main.name
+  addon_name                  = "aws-ebs-csi-driver"
+  addon_version               = var.addon_versions.ebs_csi
   resolve_conflicts_on_create = "OVERWRITE"
-  
+
   tags = var.tags
 }

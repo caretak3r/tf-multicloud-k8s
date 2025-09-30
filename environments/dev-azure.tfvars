@@ -4,7 +4,7 @@ cluster_name        = "dev-aks-cluster"
 environment         = "dev"
 node_size_config    = "small"
 resource_group_name = "dev-k8s-rg"
-location           = "East US"
+location            = "East US"
 
 tags = {
   Environment = "dev"

@@ -10,10 +10,10 @@ cluster_name   = "sandbox-ecs-cluster"
 environment    = "sandbox"
 
 # Module Control - Enable ECS only
-enable_eks         = false
-enable_ecs         = true
-enable_bastion     = false
-enable_nat_gateway = false
+enable_eks           = false
+enable_ecs           = true
+enable_bastion       = false
+enable_nat_gateway   = false
 enable_vpc_endpoints = false
 
 # Existing VPC Configuration
@@ -31,17 +31,17 @@ private_subnet_ids = [
 # Replace with your existing public subnet IDs (for ALB)
 public_subnet_ids = [
   "subnet-abcdef0123456789a",
-  "subnet-abcdef0123456789b", 
+  "subnet-abcdef0123456789b",
   "subnet-abcdef0123456789c"
 ]
 
 # ECS Service Configuration
-ecs_container_image         = "123456789012.dkr.ecr.us-west-2.amazonaws.com/main-service:latest"
-ecs_container_port          = 50051
-ecs_task_cpu                = 1024  # 1 vCPU
-ecs_task_memory             = 2048  # 2GB RAM
-ecs_desired_count           = 2     # 2 instances
-ecs_enable_secrets_sidecar  = true  # Enable secrets sidecar container
+ecs_container_image        = "123456789012.dkr.ecr.us-west-2.amazonaws.com/main-service:latest"
+ecs_container_port         = 50051
+ecs_task_cpu               = 1024 # 1 vCPU
+ecs_task_memory            = 2048 # 2GB RAM
+ecs_desired_count          = 2    # 2 instances
+ecs_enable_secrets_sidecar = true # Enable secrets sidecar container
 
 # Sidecar Configuration (ECR image)
 ecs_secrets_sidecar_image = "123456789012.dkr.ecr.us-west-2.amazonaws.com/sidecar-service:latest"
@@ -71,9 +71,9 @@ ecs_environment_variables = [
 ]
 
 # ALB Configuration - Front main service on 443:50051 with wildcard route
-ecs_health_check_path    = "/health"
-ecs_internal_alb         = false  # Public-facing ALB
-ecs_allowed_cidr_blocks  = ["0.0.0.0/0"]  # Allow from anywhere
+ecs_health_check_path   = "/health"
+ecs_internal_alb        = false         # Public-facing ALB
+ecs_allowed_cidr_blocks = ["0.0.0.0/0"] # Allow from anywhere
 
 # SSL Certificate Configuration
 # Use existing ACM certificate for ALB
@@ -81,24 +81,24 @@ ecs_acm_certificate_arn = "arn:aws:acm:us-west-2:123456789012:certificate/123456
 
 # Create self-signed certificate for service containers
 ecs_create_self_signed_cert = true
-ecs_domain_name            = "sandbox-ecs-cluster.local"
+ecs_domain_name             = "sandbox-ecs-cluster.local"
 
 # Security Configuration
-ecs_enable_waf              = false  # Disabled for sandbox
-ecs_rate_limit_per_5min     = 1000   # Lower rate limit for sandbox
-ecs_enable_deletion_protection = false  # Allow deletion in sandbox
+ecs_enable_waf                 = false # Disabled for sandbox
+ecs_rate_limit_per_5min        = 1000  # Lower rate limit for sandbox
+ecs_enable_deletion_protection = false # Allow deletion in sandbox
 
 # Logging Configuration
-log_retention_in_days = 7  # Short retention for sandbox
+log_retention_in_days = 7 # Short retention for sandbox
 
 # Tags
 tags = {
-  Environment   = "sandbox"
-  Project      = "ecs-deployment"
-  Service      = "main-service"
-  ManagedBy    = "terraform"
-  Owner        = "devops-team"
-  Purpose      = "testing"
+  Environment = "sandbox"
+  Project     = "ecs-deployment"
+  Service     = "main-service"
+  ManagedBy   = "terraform"
+  Owner       = "devops-team"
+  Purpose     = "testing"
 }
 
 # ============================================================================

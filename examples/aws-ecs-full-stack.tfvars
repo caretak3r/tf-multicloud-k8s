@@ -4,10 +4,10 @@ cluster_name = "my-ecs-app"
 environment  = "production"
 
 # Module Control - Enable ECS and disable EKS
-enable_eks = false
-enable_ecs = true
-enable_bastion = true
-enable_nat_gateway = true
+enable_eks           = false
+enable_ecs           = true
+enable_bastion       = true
+enable_nat_gateway   = true
 enable_vpc_endpoints = true
 
 # VPC Configuration
@@ -25,9 +25,9 @@ ecs_desired_count   = 3
 # Secrets Configuration
 ecs_secrets_prefix = "myapp/"
 ecs_secrets = {
-  database_url      = "postgresql://user:pass@db:5432/myapp"
-  api_key          = "your-secret-api-key"
-  encryption_key   = "your-encryption-key"
+  database_url   = "postgresql://user:pass@db:5432/myapp"
+  api_key        = "your-secret-api-key"
+  encryption_key = "your-encryption-key"
 }
 
 # Environment Variables
@@ -43,8 +43,8 @@ ecs_environment_variables = [
 ]
 
 # ALB Configuration
-ecs_health_check_path = "/health"
-ecs_internal_alb      = false
+ecs_health_check_path   = "/health"
+ecs_internal_alb        = false
 ecs_allowed_cidr_blocks = ["0.0.0.0/0"]
 
 # Certificate Configuration (use existing certificate)
@@ -52,11 +52,11 @@ ecs_allowed_cidr_blocks = ["0.0.0.0/0"]
 
 # OR create self-signed certificate (default behavior)
 ecs_create_self_signed_cert = true
-ecs_domain_name            = "myapp.example.com"
+ecs_domain_name             = "myapp.example.com"
 
 # Security Configuration
-ecs_enable_waf              = true
-ecs_rate_limit_per_5min     = 2000
+ecs_enable_waf                 = true
+ecs_rate_limit_per_5min        = 2000
 ecs_enable_deletion_protection = false
 
 # Bastion Configuration

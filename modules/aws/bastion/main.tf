@@ -143,14 +143,14 @@ resource "aws_iam_instance_profile" "bastion" {
 locals {
   user_data = base64encode(templatefile("${path.module}/user_data.sh", {
     cluster_name = var.cluster_name
-    region      = var.region
+    region       = var.region
   }))
 }
 
 # Bastion host EC2 instance
 resource "aws_instance" "bastion" {
-  ami                     = var.ami_id != null ? var.ami_id : data.aws_ami.amazon_linux.id
-  instance_type           = var.instance_type
+  ami                    = var.ami_id != null ? var.ami_id : data.aws_ami.amazon_linux.id
+  instance_type          = var.instance_type
   key_name               = var.key_name
   vpc_security_group_ids = [aws_security_group.bastion.id]
   subnet_id              = var.public_subnet_id
