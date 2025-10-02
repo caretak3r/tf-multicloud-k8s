@@ -14,6 +14,9 @@ module "vpc" {
   resource_group_name = var.resource_group_name
   location           = var.location
   name_prefix        = var.cluster_name
+  create_vpc         = var.create_vpc
+  vpc_id             = var.vpc_id
+  subnet_id          = var.subnet_id
   vnet_cidr          = var.vnet_cidr
   aks_subnet_cidr    = var.aks_subnet_cidr
   private_subnet_cidr = var.private_subnet_cidr

@@ -48,7 +48,7 @@ variable "node_size_config" {
 variable "kubernetes_version" {
   description = "Kubernetes version for GKE cluster"
   type        = string
-  default     = "1.27"
+  default     = "1.32"
 }
 
 variable "release_channel" {

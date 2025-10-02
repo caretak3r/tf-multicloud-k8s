@@ -31,7 +31,7 @@ variable "node_size_config" {
 variable "kubernetes_version" {
   description = "Kubernetes version for EKS cluster"
   type        = string
-  default     = "1.28"
+  default     = "1.32"
 }
 
 variable "ami_type" {

@@ -74,26 +74,9 @@ examples/
   upload-secrets.sh
 modules/
   aws/
-    alb/
-      main.tf
-      outputs.tf
-      README.md
-      variables.tf
     bastion/
       main.tf
       outputs.tf
-      user_data.sh
-      variables.tf
-    ecs/
-      secrets-sidecar/
-        app.py
-        build.sh
-        Dockerfile
-        README.md
-        requirements.txt
-      main.tf
-      outputs.tf
-      README.md
       user_data.sh
       variables.tf
     eks/
@@ -107,6 +90,18 @@ modules/
     main.tf
     outputs.tf
     README.md
+    variables.tf
+  azure/
+    aks/
+      main.tf
+      outputs.tf
+      variables.tf
+    vpc/
+      main.tf
+      outputs.tf
+      variables.tf
+    main.tf
+    outputs.tf
     variables.tf
   gcp/
     gke/
@@ -498,53 +493,6 @@ variable "tags" {
 }
 </file>
 
-<file path="modules/aws/ecs/secrets-sidecar/requirements.txt">
-Flask==2.3.3
-boto3==1.34.0
-botocore==1.34.0
-</file>
-
-<file path="modules/aws/ecs/user_data.sh">
-#!/bin/bash
-
-# ECS Agent configuration
-echo "ECS_CLUSTER=${cluster_name}" >> /etc/ecs/ecs.config
-echo "ECS_ENABLE_CONTAINER_METADATA=true" >> /etc/ecs/ecs.config
-echo "ECS_ENABLE_TASK_IAM_ROLE=true" >> /etc/ecs/ecs.config
-echo "ECS_ENABLE_TASK_IAM_ROLE_NETWORK_HOST=true" >> /etc/ecs/ecs.config
-
-# Optimize Docker settings for ECS
-echo "ECS_ENGINE_TASK_CLEANUP_WAIT_DURATION=5m" >> /etc/ecs/ecs.config
-echo "ECS_IMAGE_CLEANUP_INTERVAL=10m" >> /etc/ecs/ecs.config
-echo "ECS_IMAGE_MINIMUM_CLEANUP_AGE=30m" >> /etc/ecs/ecs.config
-
-# Update packages and install CloudWatch agent
-yum update -y
-yum install -y amazon-cloudwatch-agent
-
-# Start and enable ECS agent
-systemctl enable ecs
-systemctl start ecs
-
-# Install ECS CLI tools
-curl -Lo /usr/local/bin/ecs-cli https://amazon-ecs-cli.s3.amazonaws.com/ecs-cli-linux-amd64-latest
-chmod +x /usr/local/bin/ecs-cli
-
-# Set up log forwarding for ECS agent
-cat << 'EOF' > /etc/rsyslog.d/51-ecs-agent.conf
-# ECS Agent logs
-$FileCreateMode 0644
-$DirCreateMode 0755
-$Umask 0022
-$PrivDropToUser ecs
-$PrivDropToGroup ecs
-:programname, isequal, "ecs-agent" /var/log/ecs/ecs-agent.log
-& stop
-EOF
-
-systemctl restart rsyslog
-</file>
-
 <file path="modules/aws/eks/outputs.tf">
 output "cluster_id" {
   description = "EKS cluster ID"
@@ -623,25 +571,359 @@ output "kms_key_arn" {
 }
 </file>
 
-<file path="modules/aws/eks/variables.tf">
+<file path="modules/azure/aks/main.tf">
+locals {
+  node_size_map = {
+    small = {
+      vm_size            = "Standard_D2s_v3"  # 2 vCPU, 8 GB
+      node_count         = 2
+      min_count          = 1
+      max_count          = 5
+      os_disk_size_gb    = 50
+    }
+    medium = {
+      vm_size            = "Standard_D4s_v3"  # 4 vCPU, 16 GB
+      node_count         = 3
+      min_count          = 2
+      max_count          = 10
+      os_disk_size_gb    = 100
+    }
+    large = {
+      vm_size            = "Standard_D8s_v3"  # 8 vCPU, 32 GB
+      node_count         = 5
+      min_count          = 3
+      max_count          = 20
+      os_disk_size_gb    = 100
+    }
+  }
+
+  node_config = local.node_size_map[var.node_size_config]
+}
+
+# Create Key Vault for encryption if not provided
+resource "azurerm_key_vault" "aks" {
+  count                       = var.key_vault_key_id == null ? 1 : 0
+  name                        = "${substr(replace(var.cluster_name, "-", ""), 0, 20)}kv"
+  location                    = var.location
+  resource_group_name         = var.resource_group_name
+  enabled_for_disk_encryption = true
+  tenant_id                   = data.azurerm_client_config.current.tenant_id
+  soft_delete_retention_days  = 7
+  purge_protection_enabled    = true
+  sku_name                   = "standard"
+
+  access_policy {
+    tenant_id = data.azurerm_client_config.current.tenant_id
+    object_id = data.azurerm_client_config.current.object_id
+
+    key_permissions = [
+      "Create",
+      "Get",
+      "List",
+      "Delete",
+      "Purge",
+      "Recover",
+      "Update",
+      "GetRotationPolicy",
+      "SetRotationPolicy"
+    ]
+  }
+
+  tags = var.tags
+}
+
+resource "azurerm_key_vault_key" "aks" {
+  count        = var.key_vault_key_id == null ? 1 : 0
+  name         = "${var.cluster_name}-key"
+  key_vault_id = azurerm_key_vault.aks[0].id
+  key_type     = "RSA"
+  key_size     = 2048
+
+  key_opts = [
+    "decrypt",
+    "encrypt",
+    "sign",
+    "unwrapKey",
+    "verify",
+    "wrapKey",
+  ]
+
+  rotation_policy {
+    automatic {
+      time_before_expiry = "P30D"
+    }
+    expire_after         = "P90D"
+    notify_before_expiry = "P29D"
+  }
+
+  tags = var.tags
+}
+
+# Create disk encryption set
+resource "azurerm_disk_encryption_set" "aks" {
+  name                = "${var.cluster_name}-des"
+  resource_group_name = var.resource_group_name
+  location            = var.location
+  key_vault_key_id    = var.key_vault_key_id != null ? var.key_vault_key_id : azurerm_key_vault_key.aks[0].id
+
+  identity {
+    type = "SystemAssigned"
+  }
+
+  tags = var.tags
+}
+
+# Grant disk encryption set access to key vault
+resource "azurerm_key_vault_access_policy" "disk_encryption_set" {
+  key_vault_id = var.key_vault_key_id != null ? split("/keys/", var.key_vault_key_id)[0] : azurerm_key_vault.aks[0].id
+
+  tenant_id = azurerm_disk_encryption_set.aks.identity[0].tenant_id
+  object_id = azurerm_disk_encryption_set.aks.identity[0].principal_id
+
+  key_permissions = [
+    "Get",
+    "UnwrapKey",
+    "WrapKey"
+  ]
+}
+
+data "azurerm_client_config" "current" {}
+
+# User assigned identity for AKS
+resource "azurerm_user_assigned_identity" "aks" {
+  name                = "${var.cluster_name}-identity"
+  location            = var.location
+  resource_group_name = var.resource_group_name
+  tags                = var.tags
+}
+
+# AKS Cluster - Private with encryption
+resource "azurerm_kubernetes_cluster" "main" {
+  name                = var.cluster_name
+  location            = var.location
+  resource_group_name = var.resource_group_name
+  dns_prefix          = var.cluster_name
+  kubernetes_version  = var.kubernetes_version
+
+  # Private cluster configuration
+  private_cluster_enabled             = true
+  private_dns_zone_id                 = var.private_dns_zone_id
+  private_cluster_public_fqdn_enabled = false
+
+  # Enable Azure Policy
+  azure_policy_enabled = var.enable_azure_policy
+
+  # Enable disk encryption
+  disk_encryption_set_id = azurerm_disk_encryption_set.aks.id
+
+  # Network configuration
+  network_profile {
+    network_plugin     = var.network_plugin
+    network_policy     = var.network_policy
+    dns_service_ip     = var.dns_service_ip
+    service_cidr       = var.service_cidr
+    load_balancer_sku  = "standard"
+    outbound_type      = "userDefinedRouting"  # For private clusters
+  }
+
+  default_node_pool {
+    name                         = "system"
+    node_count                   = local.node_config.node_count
+    vm_size                      = local.node_config.vm_size
+    os_disk_size_gb             = local.node_config.os_disk_size_gb
+    vnet_subnet_id              = var.subnet_id
+    type                        = "VirtualMachineScaleSets"
+    enable_auto_scaling         = true
+    min_count                   = local.node_config.min_count
+    max_count                   = local.node_config.max_count
+    enable_host_encryption      = var.enable_host_encryption
+    only_critical_addons_enabled = true
+    
+    upgrade_settings {
+      max_surge = "10%"
+    }
+
+    node_labels = {
+      "nodepool-type"    = "system"
+      "environment"      = var.environment
+      "nodepoolos"       = "linux"
+      "app"              = "system-apps"
+    }
+
+    tags = var.tags
+  }
+
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.aks.id]
+  }
+
+  # Enable Microsoft Defender
+  microsoft_defender {
+    log_analytics_workspace_id = var.enable_microsoft_defender ? var.log_analytics_workspace_id : null
+  }
+
+  # Enable OIDC and workload identity
+  oidc_issuer_enabled       = var.enable_workload_identity
+  workload_identity_enabled = var.enable_workload_identity
+
+  # Key Management Service for etcd encryption
+  key_management_service {
+    key_vault_key_id         = var.key_vault_key_id != null ? var.key_vault_key_id : azurerm_key_vault_key.aks[0].id
+    key_vault_network_access = "Private"
+  }
+
+  # Auto-scaler profile
+  auto_scaler_profile {
+    balance_similar_node_groups      = true
+    expander                          = "random"
+    max_graceful_termination_sec     = 600
+    max_node_provisioning_time       = "15m"
+    max_unready_nodes                = 3
+    max_unready_percentage           = 45
+    new_pod_scale_up_delay           = "0s"
+    scale_down_delay_after_add       = "10m"
+    scale_down_delay_after_delete    = "10s"
+    scale_down_delay_after_failure   = "3m"
+    scan_interval                    = "10s"
+    scale_down_unneeded              = "10m"
+    scale_down_unready               = "20m"
+    scale_down_utilization_threshold = "0.5"
+  }
+
+  # Maintenance window
+  maintenance_window {
+    allowed {
+      day   = "Saturday"
+      hours = [1, 4]
+    }
+    allowed {
+      day   = "Sunday"  
+      hours = [1, 4]
+    }
+  }
+
+  tags = var.tags
+}
+
+# Additional node pool for workloads
+resource "azurerm_kubernetes_cluster_node_pool" "workload" {
+  name                  = "workload"
+  kubernetes_cluster_id = azurerm_kubernetes_cluster.main.id
+  vm_size              = local.node_config.vm_size
+  node_count           = local.node_config.node_count
+  vnet_subnet_id       = var.subnet_id
+  
+  enable_auto_scaling    = true
+  min_count             = local.node_config.min_count
+  max_count             = local.node_config.max_count
+  enable_host_encryption = var.enable_host_encryption
+  os_disk_size_gb       = local.node_config.os_disk_size_gb
+
+  node_labels = {
+    "nodepool-type" = "workload"
+    "environment"   = var.environment
+  }
+
+  node_taints = var.workload_node_taints
+
+  upgrade_settings {
+    max_surge = "10%"
+  }
+
+  tags = var.tags
+}
+
+# Grant AKS identity access to ACR if provided
+resource "azurerm_role_assignment" "aks_acr" {
+  count                = var.container_registry_id != null ? 1 : 0
+  principal_id         = azurerm_user_assigned_identity.aks.principal_id
+  role_definition_name = "AcrPull"
+  scope                = var.container_registry_id
+}
+
+# Network contributor role for AKS identity on subnet
+resource "azurerm_role_assignment" "aks_network" {
+  principal_id         = azurerm_user_assigned_identity.aks.principal_id
+  role_definition_name = "Network Contributor"
+  scope                = var.subnet_id
+}
+</file>
+
+<file path="modules/azure/aks/outputs.tf">
+output "cluster_id" {
+  description = "The AKS cluster ID"
+  value       = azurerm_kubernetes_cluster.main.id
+}
+
+output "cluster_name" {
+  description = "The AKS cluster name"
+  value       = azurerm_kubernetes_cluster.main.name
+}
+
+output "cluster_fqdn" {
+  description = "The AKS cluster FQDN"
+  value       = azurerm_kubernetes_cluster.main.fqdn
+}
+
+output "cluster_endpoint" {
+  description = "The AKS cluster endpoint"
+  value       = azurerm_kubernetes_cluster.main.kube_config[0].host
+  sensitive   = true
+}
+
+output "kube_config" {
+  description = "Kubernetes config for the cluster"
+  value       = azurerm_kubernetes_cluster.main.kube_config_raw
+  sensitive   = true
+}
+
+output "oidc_issuer_url" {
+  description = "The OIDC issuer URL for workload identity"
+  value       = azurerm_kubernetes_cluster.main.oidc_issuer_url
+}
+
+output "identity_principal_id" {
+  description = "The principal ID of the managed identity"
+  value       = azurerm_user_assigned_identity.aks.principal_id
+}
+
+output "identity_client_id" {
+  description = "The client ID of the managed identity"
+  value       = azurerm_user_assigned_identity.aks.client_id
+}
+
+output "disk_encryption_set_id" {
+  description = "The disk encryption set ID"
+  value       = azurerm_disk_encryption_set.aks.id
+}
+
+output "key_vault_key_id" {
+  description = "The Key Vault key ID used for encryption"
+  value       = var.key_vault_key_id != null ? var.key_vault_key_id : azurerm_key_vault_key.aks[0].id
+}
+</file>
+
+<file path="modules/azure/aks/variables.tf">
 variable "cluster_name" {
-  description = "Name of the EKS cluster"
+  description = "Name of the AKS cluster"
   type        = string
 }
 
-variable "vpc_id" {
-  description = "VPC ID where EKS cluster will be created"
+variable "resource_group_name" {
+  description = "Name of the resource group"
   type        = string
 }
 
-variable "vpc_cidr_block" {
-  description = "CIDR block of the VPC"
+variable "location" {
+  description = "Azure region"
   type        = string
 }
 
-variable "private_subnet_ids" {
-  description = "List of private subnet IDs for EKS cluster"
-  type        = list(string)
+variable "kubernetes_version" {
+  description = "Kubernetes version"
+  type        = string
+  default     = "1.28"
 }
 
 variable "node_size_config" {
@@ -654,67 +936,96 @@ variable "node_size_config" {
   }
 }
 
-variable "kubernetes_version" {
-  description = "Kubernetes version for EKS cluster"
+variable "subnet_id" {
+  description = "Subnet ID for AKS nodes"
   type        = string
-  default     = "1.28"
 }
 
-variable "ami_type" {
-  description = "AMI type for EKS worker nodes"
+variable "private_dns_zone_id" {
+  description = "Private DNS Zone ID for private cluster"
   type        = string
-  default     = "AL2_x86_64"
+  default     = "System"
 }
 
-variable "capacity_type" {
-  description = "Capacity type for EKS worker nodes (ON_DEMAND or SPOT)"
+variable "network_plugin" {
+  description = "Network plugin for AKS (azure or kubenet)"
   type        = string
-  default     = "ON_DEMAND"
-  validation {
-    condition     = contains(["ON_DEMAND", "SPOT"], var.capacity_type)
-    error_message = "Capacity type must be either ON_DEMAND or SPOT."
-  }
+  default     = "azure"
 }
 
-variable "enabled_cluster_log_types" {
-  description = "List of cluster log types to enable"
-  type        = list(string)
-  default = [
-    "api",
-    "audit",
-    "authenticator",
-    "controllerManager",
-    "scheduler"
-  ]
+variable "network_policy" {
+  description = "Network policy for AKS"
+  type        = string
+  default     = "azure"
 }
 
-variable "log_retention_in_days" {
-  description = "CloudWatch log retention in days"
-  type        = number
-  default     = 7
+variable "dns_service_ip" {
+  description = "DNS service IP address"
+  type        = string
+  default     = "10.0.0.10"
 }
 
-variable "bastion_security_group_id" {
-  description = "Security group ID of bastion host (optional)"
+variable "service_cidr" {
+  description = "Service CIDR for Kubernetes services"
+  type        = string
+  default     = "10.0.0.0/16"
+}
+
+variable "key_vault_key_id" {
+  description = "ID of existing Key Vault key for encryption. If not provided, a new key will be created."
   type        = string
   default     = null
 }
 
-variable "node_ssh_key_name" {
-  description = "EC2 Key Pair name for SSH access to worker nodes"
+variable "enable_host_encryption" {
+  description = "Enable host encryption for nodes"
+  type        = bool
+  default     = true
+}
+
+variable "enable_azure_policy" {
+  description = "Enable Azure Policy for AKS"
+  type        = bool
+  default     = true
+}
+
+variable "enable_microsoft_defender" {
+  description = "Enable Microsoft Defender for Cloud"
+  type        = bool
+  default     = true
+}
+
+variable "log_analytics_workspace_id" {
+  description = "Log Analytics workspace ID for monitoring"
   type        = string
   default     = null
 }
 
-variable "addon_versions" {
-  description = "Versions for EKS add-ons"
-  type = object({
-    vpc_cni    = optional(string, null)
-    coredns    = optional(string, null)
-    kube_proxy = optional(string, null)
-    ebs_csi    = optional(string, null)
-  })
-  default = {}
+variable "enable_workload_identity" {
+  description = "Enable workload identity"
+  type        = bool
+  default     = true
+}
+
+variable "container_registry_id" {
+  description = "Azure Container Registry ID to grant pull access"
+  type        = string
+  default     = null
+}
+
+variable "workload_node_taints" {
+  description = "Taints for workload node pool"
+  type = list(object({
+    key    = string
+    value  = string
+    effect = string
+  }))
+  default = []
+}
+
+variable "environment" {
+  description = "Environment name"
+  type        = string
 }
 
 variable "tags" {
@@ -724,197 +1035,335 @@ variable "tags" {
 }
 </file>
 
-<file path="modules/gcp/gke/main.tf">
-locals {
-  # Map node configurations to match AWS c5.2xlarge (8 vCPU, 16 GB RAM)
-  node_size_map = {
-    small = {
-      machine_type = "n2-standard-2"  # 2 vCPU, 8 GB
-      min_count    = 1
-      max_count    = 5
-      initial_node_count = 2
-      disk_size_gb = 50
-      disk_type    = "pd-standard"
-    }
-    medium = {
-      machine_type = "n2-standard-4"  # 4 vCPU, 16 GB
-      min_count    = 2
-      max_count    = 10
-      initial_node_count = 3
-      disk_size_gb = 100
-      disk_type    = "pd-standard"
-    }
-    large = {
-      machine_type = "n2-standard-8"  # 8 vCPU, 32 GB - matches AWS c5.2xlarge
-      min_count    = 3
-      max_count    = 20
-      initial_node_count = 5
-      disk_size_gb = 100
-      disk_type    = "pd-ssd"
-    }
-  }
-
-  node_config = local.node_size_map[var.node_size_config]
+<file path="modules/azure/vpc/main.tf">
+# Resource group
+resource "azurerm_resource_group" "main" {
+  name     = var.resource_group_name
+  location = var.location
+  tags     = var.tags
 }
 
-# Use the terraform-google-modules/kubernetes-engine module for GKE
-module "gke" {
-  source  = "terraform-google-modules/kubernetes-engine/google//modules/private-cluster"
-  version = "~> 29.0"
+# Virtual Network
+resource "azurerm_virtual_network" "main" {
+  name                = "${var.name_prefix}-vnet"
+  address_space       = [var.vnet_cidr]
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+  tags                = var.tags
+}
 
-  project_id = var.project_id
-  name       = var.cluster_name
-  region     = var.region
-
-  # Network configuration - assumes existing VPC
-  network           = var.network_name
-  subnetwork        = var.subnetwork_name
-  ip_range_pods     = var.pods_range_name
-  ip_range_services = var.services_range_name
-
-  # Private cluster configuration
-  enable_private_endpoint = true
-  enable_private_nodes    = true
-  master_ipv4_cidr_block = var.master_ipv4_cidr_block
-
-  # Master authorized networks - for admin access
-  master_authorized_networks = var.master_authorized_networks
-
-  # Kubernetes version and release channel
-  kubernetes_version = var.kubernetes_version
-  release_channel    = var.release_channel
-
-  # Security features
-  enable_shielded_nodes       = var.enable_shielded_nodes
-  enable_binary_authorization = var.enable_binary_authorization
-  workload_identity_enabled   = var.enable_workload_identity
-  enable_network_policy       = var.enable_network_policy
-
-  # RBAC configuration - Google Groups for admins
-  authenticator_security_group = var.masters_group_email != "" ? var.masters_group_email : null
-  rbac_group_domain            = var.rbac_group_domain
-
-  # Monitoring and logging
-  logging_enabled_components    = var.logging_enabled_components
-  monitoring_enabled_components = var.monitoring_enabled_components
-
-  # Cluster addons
-  horizontal_pod_autoscaling = var.enable_horizontal_pod_autoscaling
-  vertical_pod_autoscaling   = var.enable_vertical_pod_autoscaling
-  filestore_csi_driver       = var.enable_filestore_csi_driver
-  gcs_fuse_csi_driver       = var.enable_gcs_fuse_csi_driver
-
-  # Disable public endpoint completely for full privacy
-  deploy_using_private_endpoint = true
+# Private subnet for AKS
+resource "azurerm_subnet" "aks" {
+  name                 = "${var.name_prefix}-aks-subnet"
+  resource_group_name  = azurerm_resource_group.main.name
+  virtual_network_name = azurerm_virtual_network.main.name
+  address_prefixes     = [var.aks_subnet_cidr]
   
-  # Enable Dataplane V2 for better network performance
-  datapath_provider = "ADVANCED_DATAPATH"
-
-  # Node pool configuration
-  node_pools = [
-    {
-      name               = "${var.cluster_name}-node-pool"
-      machine_type       = local.node_config.machine_type
-      min_count          = local.node_config.min_count
-      max_count          = local.node_config.max_count
-      initial_node_count = local.node_config.initial_node_count
-      disk_size_gb       = local.node_config.disk_size_gb
-      disk_type          = local.node_config.disk_type
-      auto_repair        = true
-      auto_upgrade       = true
-      
-      # Use spot instances for cost optimization (similar to AWS spot)
-      spot               = var.node_size_config != "large"
-      
-      # Enable workload identity for the node pool
-      workload_metadata_config = var.enable_workload_identity ? "GKE_METADATA" : "UNSPECIFIED"
-      
-      # Preemptible instances for non-production
-      preemptible        = false
-      
-      # Node taints and labels
-      node_metadata      = "GKE_METADATA_SERVER"
-      
-      # Security settings
-      enable_secure_boot          = var.enable_shielded_nodes
-      enable_integrity_monitoring = var.enable_shielded_nodes
-      
-      # Service account - will be created by the module
-      service_account = "default"
-    }
+  # Disable private endpoint network policies for AKS
+  private_endpoint_network_policies = "Disabled"
+  
+  # Service endpoints for secure access to Azure services
+  service_endpoints = [
+    "Microsoft.Storage",
+    "Microsoft.KeyVault",
+    "Microsoft.ContainerRegistry",
+    "Microsoft.Sql"
   ]
-
-  # Node pool OAuth scopes
-  node_pools_oauth_scopes = {
-    all = [
-      "https://www.googleapis.com/auth/cloud-platform",
-    ]
-  }
-
-  # Node pool labels
-  node_pools_labels = {
-    all = merge(var.labels, {
-      cluster_name = var.cluster_name
-      node_pool    = "default"
-    })
-  }
-
-  # Node pool tags
-  node_pools_tags = {
-    all = [
-      var.cluster_name,
-      "gke-node",
-      "private"
-    ]
-  }
-
-  # Cluster resource labels
-  cluster_resource_labels = merge(var.labels, {
-    cluster_name = var.cluster_name
-    environment  = "private"
-  })
-
-  # Configure cluster autoscaling
-  cluster_autoscaling = {
-    enabled             = true
-    autoscaling_profile = "OPTIMIZE_UTILIZATION"
-    min_cpu_cores       = local.node_config.min_count * 8  # Based on n2-standard-8
-    max_cpu_cores       = local.node_config.max_count * 8
-    min_memory_gb       = local.node_config.min_count * 32
-    max_memory_gb       = local.node_config.max_count * 32
-    gpu_resources       = []
-  }
-
-  # Maintenance window
-  maintenance_start_time = "05:00"
-  maintenance_end_time   = "07:00"
-  maintenance_recurrence = "FREQ=WEEKLY;BYDAY=SA,SU"
-
-  # Remove default node pool
-  remove_default_node_pool = true
 }
 
-# Create IAM binding for masters group if provided
-resource "google_project_iam_member" "cluster_admin" {
-  count   = var.masters_group_email != "" ? 1 : 0
-  project = var.project_id
-  role    = "roles/container.clusterAdmin"
-  member  = "group:${var.masters_group_email}"
+# Private subnet for other workloads
+resource "azurerm_subnet" "private" {
+  name                 = "${var.name_prefix}-private-subnet"
+  resource_group_name  = azurerm_resource_group.main.name
+  virtual_network_name = azurerm_virtual_network.main.name
+  address_prefixes     = [var.private_subnet_cidr]
+  
+  service_endpoints = [
+    "Microsoft.Storage",
+    "Microsoft.KeyVault",
+    "Microsoft.ContainerRegistry"
+  ]
 }
 
-# Create firewall rules for private GKE access if needed
-resource "google_compute_firewall" "gke_master_to_nodes" {
-  name    = "${var.cluster_name}-master-to-nodes"
-  network = var.network_name
-  project = var.project_id
+# Bastion subnet (if enabled)
+resource "azurerm_subnet" "bastion" {
+  count                = var.enable_bastion ? 1 : 0
+  name                 = "AzureBastionSubnet"  # Must be named exactly this
+  resource_group_name  = azurerm_resource_group.main.name
+  virtual_network_name = azurerm_virtual_network.main.name
+  address_prefixes     = [var.bastion_subnet_cidr]
+}
 
-  allow {
-    protocol = "tcp"
-    ports    = ["443", "10250"]
+# Public IP for NAT Gateway
+resource "azurerm_public_ip" "nat" {
+  count               = var.enable_nat_gateway ? 1 : 0
+  name                = "${var.name_prefix}-nat-pip"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+  allocation_method   = "Static"
+  sku                 = "Standard"
+  zones               = ["1"]
+  tags                = var.tags
+}
+
+# NAT Gateway for outbound connectivity
+resource "azurerm_nat_gateway" "main" {
+  count               = var.enable_nat_gateway ? 1 : 0
+  name                = "${var.name_prefix}-nat"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+  sku_name            = "Standard"
+  idle_timeout_in_minutes = 10
+  zones               = ["1"]
+  tags                = var.tags
+}
+
+# Associate NAT Gateway with Public IP
+resource "azurerm_nat_gateway_public_ip_association" "main" {
+  count                = var.enable_nat_gateway ? 1 : 0
+  nat_gateway_id       = azurerm_nat_gateway.main[0].id
+  public_ip_address_id = azurerm_public_ip.nat[0].id
+}
+
+# Associate NAT Gateway with AKS subnet
+resource "azurerm_subnet_nat_gateway_association" "aks" {
+  count          = var.enable_nat_gateway ? 1 : 0
+  subnet_id      = azurerm_subnet.aks.id
+  nat_gateway_id = azurerm_nat_gateway.main[0].id
+}
+
+# Associate NAT Gateway with private subnet
+resource "azurerm_subnet_nat_gateway_association" "private" {
+  count          = var.enable_nat_gateway ? 1 : 0
+  subnet_id      = azurerm_subnet.private.id
+  nat_gateway_id = azurerm_nat_gateway.main[0].id
+}
+
+# Network Security Group for AKS subnet
+resource "azurerm_network_security_group" "aks" {
+  name                = "${var.name_prefix}-aks-nsg"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+  
+  # Allow internal communication within VNet
+  security_rule {
+    name                       = "AllowVNetInBound"
+    priority                   = 100
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_range     = "*"
+    source_address_prefix      = "VirtualNetwork"
+    destination_address_prefix = "VirtualNetwork"
   }
+  
+  # Deny all other inbound traffic
+  security_rule {
+    name                       = "DenyAllInBound"
+    priority                   = 4096
+    direction                  = "Inbound"
+    access                     = "Deny"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_range     = "*"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+  
+  tags = var.tags
+}
 
-  source_ranges = [var.master_ipv4_cidr_block]
-  target_tags   = ["gke-${var.cluster_name}"]
+# Associate NSG with AKS subnet
+resource "azurerm_subnet_network_security_group_association" "aks" {
+  subnet_id                 = azurerm_subnet.aks.id
+  network_security_group_id = azurerm_network_security_group.aks.id
+}
+
+# Private DNS Zone for AKS
+resource "azurerm_private_dns_zone" "aks" {
+  count               = var.create_private_dns_zone ? 1 : 0
+  name                = "privatelink.${var.location}.azmk8s.io"
+  resource_group_name = azurerm_resource_group.main.name
+  tags                = var.tags
+}
+
+# Link Private DNS Zone to VNet
+resource "azurerm_private_dns_zone_virtual_network_link" "aks" {
+  count                 = var.create_private_dns_zone ? 1 : 0
+  name                  = "${var.name_prefix}-aks-dns-link"
+  resource_group_name   = azurerm_resource_group.main.name
+  private_dns_zone_name = azurerm_private_dns_zone.aks[0].name
+  virtual_network_id    = azurerm_virtual_network.main.id
+  registration_enabled  = false
+  tags                  = var.tags
+}
+
+# Azure Bastion (if enabled)
+resource "azurerm_public_ip" "bastion" {
+  count               = var.enable_bastion ? 1 : 0
+  name                = "${var.name_prefix}-bastion-pip"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+  allocation_method   = "Static"
+  sku                 = "Standard"
+  tags                = var.tags
+}
+
+resource "azurerm_bastion_host" "main" {
+  count               = var.enable_bastion ? 1 : 0
+  name                = "${var.name_prefix}-bastion"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+  sku                 = "Basic"
+  
+  ip_configuration {
+    name                 = "configuration"
+    subnet_id            = azurerm_subnet.bastion[0].id
+    public_ip_address_id = azurerm_public_ip.bastion[0].id
+  }
+  
+  tags = var.tags
+}
+
+# Log Analytics Workspace for monitoring
+resource "azurerm_log_analytics_workspace" "main" {
+  count               = var.enable_log_analytics ? 1 : 0
+  name                = "${var.name_prefix}-logs"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+  sku                 = "PerGB2018"
+  retention_in_days   = var.log_retention_days
+  tags                = var.tags
+}
+</file>
+
+<file path="modules/azure/vpc/outputs.tf">
+output "resource_group_name" {
+  description = "Resource group name"
+  value       = azurerm_resource_group.main.name
+}
+
+output "resource_group_id" {
+  description = "Resource group ID"
+  value       = azurerm_resource_group.main.id
+}
+
+output "vnet_id" {
+  description = "Virtual network ID"
+  value       = azurerm_virtual_network.main.id
+}
+
+output "vnet_name" {
+  description = "Virtual network name"
+  value       = azurerm_virtual_network.main.name
+}
+
+output "aks_subnet_id" {
+  description = "AKS subnet ID"
+  value       = azurerm_subnet.aks.id
+}
+
+output "private_subnet_id" {
+  description = "Private subnet ID"
+  value       = azurerm_subnet.private.id
+}
+
+output "private_dns_zone_id" {
+  description = "Private DNS zone ID for AKS"
+  value       = var.create_private_dns_zone ? azurerm_private_dns_zone.aks[0].id : null
+}
+
+output "log_analytics_workspace_id" {
+  description = "Log Analytics workspace ID"
+  value       = var.enable_log_analytics ? azurerm_log_analytics_workspace.main[0].id : null
+}
+
+output "nat_gateway_id" {
+  description = "NAT Gateway ID"
+  value       = var.enable_nat_gateway ? azurerm_nat_gateway.main[0].id : null
+}
+
+output "bastion_host_id" {
+  description = "Bastion host ID"
+  value       = var.enable_bastion ? azurerm_bastion_host.main[0].id : null
+}
+</file>
+
+<file path="modules/azure/vpc/variables.tf">
+variable "resource_group_name" {
+  description = "Name of the resource group"
+  type        = string
+}
+
+variable "location" {
+  description = "Azure region"
+  type        = string
+}
+
+variable "name_prefix" {
+  description = "Prefix for resource names"
+  type        = string
+}
+
+variable "vnet_cidr" {
+  description = "CIDR block for the virtual network"
+  type        = string
+  default     = "10.0.0.0/16"
+}
+
+variable "aks_subnet_cidr" {
+  description = "CIDR block for AKS subnet"
+  type        = string
+  default     = "10.0.1.0/24"
+}
+
+variable "private_subnet_cidr" {
+  description = "CIDR block for private subnet"
+  type        = string
+  default     = "10.0.2.0/24"
+}
+
+variable "bastion_subnet_cidr" {
+  description = "CIDR block for bastion subnet"
+  type        = string
+  default     = "10.0.3.0/24"
+}
+
+variable "enable_nat_gateway" {
+  description = "Enable NAT Gateway for outbound internet access"
+  type        = bool
+  default     = true
+}
+
+variable "enable_bastion" {
+  description = "Enable Azure Bastion for secure remote access"
+  type        = bool
+  default     = false
+}
+
+variable "create_private_dns_zone" {
+  description = "Create private DNS zone for AKS"
+  type        = bool
+  default     = true
+}
+
+variable "enable_log_analytics" {
+  description = "Enable Log Analytics workspace"
+  type        = bool
+  default     = true
+}
+
+variable "log_retention_days" {
+  description = "Log retention in days"
+  type        = number
+  default     = 30
+}
+
+variable "tags" {
+  description = "Tags to apply to resources"
+  type        = map(string)
+  default     = {}
 }
 </file>
 
@@ -999,166 +1448,6 @@ output "get_credentials_command" {
 output "kubectl_config_command" {
   description = "Command to configure kubectl"
   value       = "kubectl config use-context gke_${var.project_id}_${module.gke.region}_${module.gke.name}"
-}
-</file>
-
-<file path="modules/gcp/gke/variables.tf">
-variable "cluster_name" {
-  description = "Name of the GKE cluster"
-  type        = string
-}
-
-variable "project_id" {
-  description = "GCP Project ID"
-  type        = string
-}
-
-variable "region" {
-  description = "GCP region"
-  type        = string
-}
-
-variable "network_name" {
-  description = "Name of the existing VPC network"
-  type        = string
-}
-
-variable "subnetwork_name" {
-  description = "Name of the existing subnet for GKE cluster"
-  type        = string
-}
-
-variable "pods_range_name" {
-  description = "Name of the secondary IP range for pods"
-  type        = string
-  default     = "gke-pods"
-}
-
-variable "services_range_name" {
-  description = "Name of the secondary IP range for services"
-  type        = string
-  default     = "gke-services"
-}
-
-variable "node_size_config" {
-  description = "Node size configuration (small, medium, large)"
-  type        = string
-  default     = "large"
-  validation {
-    condition     = contains(["small", "medium", "large"], var.node_size_config)
-    error_message = "Node size config must be one of: small, medium, large."
-  }
-}
-
-variable "kubernetes_version" {
-  description = "Kubernetes version for GKE cluster"
-  type        = string
-  default     = "1.27"
-}
-
-variable "release_channel" {
-  description = "GKE release channel"
-  type        = string
-  default     = "REGULAR"
-}
-
-variable "master_authorized_networks" {
-  description = "List of networks allowed to access the Kubernetes master"
-  type = list(object({
-    cidr_block   = string
-    display_name = string
-  }))
-  default = []
-}
-
-variable "master_ipv4_cidr_block" {
-  description = "The IP range in CIDR notation for the master"
-  type        = string
-  default     = "172.16.0.0/28"
-}
-
-variable "rbac_group_domain" {
-  description = "Google Groups domain for RBAC"
-  type        = string
-  default     = ""
-}
-
-variable "masters_group_email" {
-  description = "Email of the Google Group for cluster masters/admins"
-  type        = string
-  default     = ""
-}
-
-variable "enable_binary_authorization" {
-  description = "Enable Binary Authorization"
-  type        = bool
-  default     = false
-}
-
-variable "enable_shielded_nodes" {
-  description = "Enable Shielded GKE nodes"
-  type        = bool
-  default     = true
-}
-
-variable "enable_workload_identity" {
-  description = "Enable Workload Identity"
-  type        = bool
-  default     = true
-}
-
-variable "enable_network_policy" {
-  description = "Enable network policy"
-  type        = bool
-  default     = true
-}
-
-variable "enable_filestore_csi_driver" {
-  description = "Enable Filestore CSI driver"
-  type        = bool
-  default     = true
-}
-
-variable "enable_gcs_fuse_csi_driver" {
-  description = "Enable GCS FUSE CSI driver"
-  type        = bool
-  default     = false
-}
-
-variable "logging_enabled_components" {
-  description = "List of GKE components to log"
-  type        = list(string)
-  default     = ["SYSTEM_COMPONENTS", "WORKLOADS"]
-}
-
-variable "monitoring_enabled_components" {
-  description = "List of GKE components to monitor"
-  type        = list(string)
-  default     = ["SYSTEM_COMPONENTS"]
-}
-
-variable "enable_vertical_pod_autoscaling" {
-  description = "Enable vertical pod autoscaling"
-  type        = bool
-  default     = true
-}
-
-variable "enable_horizontal_pod_autoscaling" {
-  description = "Enable horizontal pod autoscaling"
-  type        = bool
-  default     = true
-}
-
-variable "tags" {
-  description = "A map of tags to apply to all resources"
-  type        = map(string)
-  default     = {}
-}
-
-variable "labels" {
-  description = "A map of labels to apply to all resources"
-  type        = map(string)
-  default     = {}
 }
 </file>
 
@@ -1446,6 +1735,113 @@ tags = {
 }
 </file>
 
+<file path="modules/aws/eks/variables.tf">
+variable "cluster_name" {
+  description = "Name of the EKS cluster"
+  type        = string
+}
+
+variable "vpc_id" {
+  description = "VPC ID where EKS cluster will be created"
+  type        = string
+}
+
+variable "vpc_cidr_block" {
+  description = "CIDR block of the VPC"
+  type        = string
+}
+
+variable "private_subnet_ids" {
+  description = "List of private subnet IDs for EKS cluster"
+  type        = list(string)
+}
+
+variable "node_size_config" {
+  description = "Node size configuration (small, medium, large)"
+  type        = string
+  default     = "small"
+  validation {
+    condition     = contains(["small", "medium", "large"], var.node_size_config)
+    error_message = "Node size config must be one of: small, medium, large."
+  }
+}
+
+variable "kubernetes_version" {
+  description = "Kubernetes version for EKS cluster"
+  type        = string
+  default     = "1.28"
+}
+
+variable "ami_type" {
+  description = "AMI type for EKS worker nodes"
+  type        = string
+  default     = "AL2_x86_64"
+}
+
+variable "capacity_type" {
+  description = "Capacity type for EKS worker nodes (ON_DEMAND or SPOT)"
+  type        = string
+  default     = "ON_DEMAND"
+  validation {
+    condition     = contains(["ON_DEMAND", "SPOT"], var.capacity_type)
+    error_message = "Capacity type must be either ON_DEMAND or SPOT."
+  }
+}
+
+variable "enabled_cluster_log_types" {
+  description = "List of cluster log types to enable"
+  type        = list(string)
+  default = [
+    "api",
+    "audit",
+    "authenticator",
+    "controllerManager",
+    "scheduler"
+  ]
+}
+
+variable "log_retention_in_days" {
+  description = "CloudWatch log retention in days"
+  type        = number
+  default     = 7
+}
+
+variable "bastion_security_group_id" {
+  description = "Security group ID of bastion host (optional)"
+  type        = string
+  default     = null
+}
+
+variable "node_ssh_key_name" {
+  description = "EC2 Key Pair name for SSH access to worker nodes"
+  type        = string
+  default     = null
+}
+
+variable "addon_versions" {
+  description = "Versions for EKS add-ons"
+  type = object({
+    vpc_cni    = optional(string, null)
+    coredns    = optional(string, null)
+    kube_proxy = optional(string, null)
+    ebs_csi    = optional(string, null)
+  })
+  default = {}
+}
+
+variable "kms_key_arn" {
+  description = "ARN of existing KMS key for EKS cluster encryption. If not provided, a new key will be created."
+  type        = string
+  default     = null
+}
+
+variable "tags" {
+  description = "Tags to apply to resources"
+  type        = map(string)
+  default     = {}
+}
+</file>
+
 <file path="modules/aws/vpc/outputs.tf">
 output "vpc_id" {
   description = "ID of the VPC"
@@ -1575,6 +1971,409 @@ variable "enable_vpc_endpoints" {
 
 variable "tags" {
   description = "Tags to apply to resources"
+  type        = map(string)
+  default     = {}
+}
+</file>
+
+<file path="modules/gcp/gke/main.tf">
+# Create KMS keyring and key if not provided
+resource "google_kms_key_ring" "gke" {
+  count    = var.database_encryption_key_name == null ? 1 : 0
+  name     = "${var.cluster_name}-keyring"
+  location = var.region
+  project  = var.project_id
+}
+
+resource "google_kms_crypto_key" "gke" {
+  count           = var.database_encryption_key_name == null ? 1 : 0
+  name            = "${var.cluster_name}-key"
+  key_ring        = google_kms_key_ring.gke[0].id
+  rotation_period = "7776000s" # 90 days
+  purpose         = "ENCRYPT_DECRYPT"
+
+  lifecycle {
+    prevent_destroy = false
+  }
+}
+
+# Grant GKE service account access to the KMS key
+data "google_project" "project" {
+  project_id = var.project_id
+}
+
+resource "google_kms_crypto_key_iam_member" "gke_sa" {
+  count         = var.database_encryption_key_name == null ? 1 : 0
+  crypto_key_id = google_kms_crypto_key.gke[0].id
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  member        = "serviceAccount:service-${data.google_project.project.number}@container-engine-robot.iam.gserviceaccount.com"
+}
+
+locals {
+  # Determine which KMS key to use
+  kms_key_name = var.database_encryption_key_name != null ? var.database_encryption_key_name : (var.database_encryption_key_name == null ? google_kms_crypto_key.gke[0].id : null)
+  
+  # Map node configurations to match AWS c5.2xlarge (8 vCPU, 16 GB RAM)
+  node_size_map = {
+    small = {
+      machine_type = "n2-standard-2"  # 2 vCPU, 8 GB
+      min_count    = 1
+      max_count    = 5
+      initial_node_count = 2
+      disk_size_gb = 50
+      disk_type    = "pd-standard"
+    }
+    medium = {
+      machine_type = "n2-standard-4"  # 4 vCPU, 16 GB
+      min_count    = 2
+      max_count    = 10
+      initial_node_count = 3
+      disk_size_gb = 100
+      disk_type    = "pd-standard"
+    }
+    large = {
+      machine_type = "n2-standard-8"  # 8 vCPU, 32 GB - matches AWS c5.2xlarge
+      min_count    = 3
+      max_count    = 20
+      initial_node_count = 5
+      disk_size_gb = 100
+      disk_type    = "pd-ssd"
+    }
+  }
+
+  node_config = local.node_size_map[var.node_size_config]
+}
+
+# Use the terraform-google-modules/kubernetes-engine module for GKE
+module "gke" {
+  source  = "terraform-google-modules/kubernetes-engine/google//modules/private-cluster"
+  version = "~> 29.0"
+
+  project_id = var.project_id
+  name       = var.cluster_name
+  region     = var.region
+
+  # Network configuration - assumes existing VPC
+  network           = var.network_name
+  subnetwork        = var.subnetwork_name
+  ip_range_pods     = var.pods_range_name
+  ip_range_services = var.services_range_name
+
+  # Private cluster configuration
+  enable_private_endpoint = true
+  enable_private_nodes    = true
+  master_ipv4_cidr_block = var.master_ipv4_cidr_block
+
+  # Master authorized networks - for admin access
+  master_authorized_networks = var.master_authorized_networks
+
+  # Kubernetes version and release channel
+  kubernetes_version = var.kubernetes_version
+  release_channel    = var.release_channel
+
+  # Security features
+  enable_shielded_nodes       = var.enable_shielded_nodes
+  enable_binary_authorization = var.enable_binary_authorization
+  workload_identity_enabled   = var.enable_workload_identity
+  enable_network_policy       = var.enable_network_policy
+
+  # RBAC configuration - Google Groups for admins
+  authenticator_security_group = var.masters_group_email != "" ? var.masters_group_email : null
+  rbac_group_domain            = var.rbac_group_domain
+
+  # Monitoring and logging
+  logging_enabled_components    = var.logging_enabled_components
+  monitoring_enabled_components = var.monitoring_enabled_components
+
+  # Cluster addons
+  horizontal_pod_autoscaling = var.enable_horizontal_pod_autoscaling
+  vertical_pod_autoscaling   = var.enable_vertical_pod_autoscaling
+  filestore_csi_driver       = var.enable_filestore_csi_driver
+  gcs_fuse_csi_driver       = var.enable_gcs_fuse_csi_driver
+
+  # Disable public endpoint completely for full privacy
+  deploy_using_private_endpoint = true
+  
+  # Enable Dataplane V2 for better network performance
+  datapath_provider = "ADVANCED_DATAPATH"
+
+  # Node pool configuration
+  node_pools = [
+    {
+      name               = "${var.cluster_name}-node-pool"
+      machine_type       = local.node_config.machine_type
+      min_count          = local.node_config.min_count
+      max_count          = local.node_config.max_count
+      initial_node_count = local.node_config.initial_node_count
+      disk_size_gb       = local.node_config.disk_size_gb
+      disk_type          = local.node_config.disk_type
+      auto_repair        = true
+      auto_upgrade       = true
+      
+      # Use spot instances for cost optimization (similar to AWS spot)
+      spot               = var.node_size_config != "large"
+      
+      # Enable workload identity for the node pool
+      workload_metadata_config = var.enable_workload_identity ? "GKE_METADATA" : "UNSPECIFIED"
+      
+      # Preemptible instances for non-production
+      preemptible        = false
+      
+      # Node taints and labels
+      node_metadata      = "GKE_METADATA_SERVER"
+      
+      # Security settings
+      enable_secure_boot          = var.enable_shielded_nodes
+      enable_integrity_monitoring = var.enable_shielded_nodes
+      
+      # Service account - will be created by the module
+      service_account = "default"
+    }
+  ]
+
+  # Node pool OAuth scopes
+  node_pools_oauth_scopes = {
+    all = [
+      "https://www.googleapis.com/auth/cloud-platform",
+    ]
+  }
+
+  # Node pool labels
+  node_pools_labels = {
+    all = merge(var.labels, {
+      cluster_name = var.cluster_name
+      node_pool    = "default"
+    })
+  }
+
+  # Node pool tags
+  node_pools_tags = {
+    all = [
+      var.cluster_name,
+      "gke-node",
+      "private"
+    ]
+  }
+
+  # Cluster resource labels
+  cluster_resource_labels = merge(var.labels, {
+    cluster_name = var.cluster_name
+    environment  = "private"
+  })
+
+  # Configure cluster autoscaling
+  cluster_autoscaling = {
+    enabled             = true
+    autoscaling_profile = "OPTIMIZE_UTILIZATION"
+    min_cpu_cores       = local.node_config.min_count * 8  # Based on n2-standard-8
+    max_cpu_cores       = local.node_config.max_count * 8
+    min_memory_gb       = local.node_config.min_count * 32
+    max_memory_gb       = local.node_config.max_count * 32
+    gpu_resources       = []
+  }
+
+  # Maintenance window
+  maintenance_start_time = "05:00"
+  maintenance_end_time   = "07:00"
+  maintenance_recurrence = "FREQ=WEEKLY;BYDAY=SA,SU"
+
+  # Remove default node pool
+  remove_default_node_pool = true
+  
+  # Database encryption with Cloud KMS
+  database_encryption = [
+    {
+      state    = "ENCRYPTED"
+      key_name = local.kms_key_name
+    }
+  ]
+}
+
+# Create IAM binding for masters group if provided
+resource "google_project_iam_member" "cluster_admin" {
+  count   = var.masters_group_email != "" ? 1 : 0
+  project = var.project_id
+  role    = "roles/container.clusterAdmin"
+  member  = "group:${var.masters_group_email}"
+}
+
+# Create firewall rules for private GKE access if needed
+resource "google_compute_firewall" "gke_master_to_nodes" {
+  name    = "${var.cluster_name}-master-to-nodes"
+  network = var.network_name
+  project = var.project_id
+
+  allow {
+    protocol = "tcp"
+    ports    = ["443", "10250"]
+  }
+
+  source_ranges = [var.master_ipv4_cidr_block]
+  target_tags   = ["gke-${var.cluster_name}"]
+}
+</file>
+
+<file path="modules/gcp/gke/variables.tf">
+variable "cluster_name" {
+  description = "Name of the GKE cluster"
+  type        = string
+}
+
+variable "project_id" {
+  description = "GCP Project ID"
+  type        = string
+}
+
+variable "region" {
+  description = "GCP region"
+  type        = string
+}
+
+variable "network_name" {
+  description = "Name of the existing VPC network"
+  type        = string
+}
+
+variable "subnetwork_name" {
+  description = "Name of the existing subnet for GKE cluster"
+  type        = string
+}
+
+variable "pods_range_name" {
+  description = "Name of the secondary IP range for pods"
+  type        = string
+  default     = "gke-pods"
+}
+
+variable "services_range_name" {
+  description = "Name of the secondary IP range for services"
+  type        = string
+  default     = "gke-services"
+}
+
+variable "node_size_config" {
+  description = "Node size configuration (small, medium, large)"
+  type        = string
+  default     = "large"
+  validation {
+    condition     = contains(["small", "medium", "large"], var.node_size_config)
+    error_message = "Node size config must be one of: small, medium, large."
+  }
+}
+
+variable "kubernetes_version" {
+  description = "Kubernetes version for GKE cluster"
+  type        = string
+  default     = "1.27"
+}
+
+variable "release_channel" {
+  description = "GKE release channel"
+  type        = string
+  default     = "REGULAR"
+}
+
+variable "master_authorized_networks" {
+  description = "List of networks allowed to access the Kubernetes master"
+  type = list(object({
+    cidr_block   = string
+    display_name = string
+  }))
+  default = []
+}
+
+variable "master_ipv4_cidr_block" {
+  description = "The IP range in CIDR notation for the master"
+  type        = string
+  default     = "172.16.0.0/28"
+}
+
+variable "rbac_group_domain" {
+  description = "Google Groups domain for RBAC"
+  type        = string
+  default     = ""
+}
+
+variable "masters_group_email" {
+  description = "Email of the Google Group for cluster masters/admins"
+  type        = string
+  default     = ""
+}
+
+variable "enable_binary_authorization" {
+  description = "Enable Binary Authorization"
+  type        = bool
+  default     = false
+}
+
+variable "enable_shielded_nodes" {
+  description = "Enable Shielded GKE nodes"
+  type        = bool
+  default     = true
+}
+
+variable "enable_workload_identity" {
+  description = "Enable Workload Identity"
+  type        = bool
+  default     = true
+}
+
+variable "enable_network_policy" {
+  description = "Enable network policy"
+  type        = bool
+  default     = true
+}
+
+variable "enable_filestore_csi_driver" {
+  description = "Enable Filestore CSI driver"
+  type        = bool
+  default     = true
+}
+
+variable "enable_gcs_fuse_csi_driver" {
+  description = "Enable GCS FUSE CSI driver"
+  type        = bool
+  default     = false
+}
+
+variable "logging_enabled_components" {
+  description = "List of GKE components to log"
+  type        = list(string)
+  default     = ["SYSTEM_COMPONENTS", "WORKLOADS"]
+}
+
+variable "monitoring_enabled_components" {
+  description = "List of GKE components to monitor"
+  type        = list(string)
+  default     = ["SYSTEM_COMPONENTS"]
+}
+
+variable "enable_vertical_pod_autoscaling" {
+  description = "Enable vertical pod autoscaling"
+  type        = bool
+  default     = true
+}
+
+variable "enable_horizontal_pod_autoscaling" {
+  description = "Enable horizontal pod autoscaling"
+  type        = bool
+  default     = true
+}
+
+variable "tags" {
+  description = "A map of tags to apply to all resources"
+  type        = map(string)
+  default     = {}
+}
+
+variable "database_encryption_key_name" {
+  description = "The Cloud KMS key name to use for cluster database encryption. Format: projects/PROJECT_ID/locations/LOCATION/keyRings/RING_NAME/cryptoKeys/KEY_NAME. If not provided, a new key will be created."
+  type        = string
+  default     = null
+}
+
+variable "labels" {
+  description = "A map of labels to apply to all resources"
   type        = map(string)
   default     = {}
 }
@@ -3345,404 +4144,236 @@ trap 'log_error "Script interrupted by user"; exit 1' INT TERM
 main "$@"
 </file>
 
-<file path="modules/aws/alb/README.md">
-# AWS Application Load Balancer Module
-
-This module creates a secure Application Load Balancer (ALB) with:
-
-- HTTPS-only configuration with HTTP to HTTPS redirect
-- AWS WAF integration for security protection
-- Target group with health checks
-- Security groups with configurable access
-- Support for both internal and internet-facing deployments
-
-## Features
-
-### Security
-- **HTTPS Enforcement**: Automatic HTTP to HTTPS redirect
-- **AWS WAF Integration**: Protection against common attacks and rate limiting
-- **Security Groups**: Restrictive ingress rules with configurable CIDR blocks
-- **SSL/TLS**: Configurable SSL policies with secure defaults
-
-### WAF Protection
-The included WAF provides:
-- AWS Managed Common Rule Set (OWASP protection)
-- Known Bad Inputs protection  
-- Rate limiting (configurable per IP)
-- CloudWatch metrics and logging
-
-## Usage
-
-```hcl
-module "alb" {
-  source = "./modules/aws/alb"
-
-  cluster_name       = "my-app"
-  vpc_id            = "vpc-123456"
-  public_subnet_ids = ["subnet-123", "subnet-456"]
-  certificate_arn   = "arn:aws:acm:us-west-2:123456789012:certificate/..."
-  
-  # Target configuration
-  target_port       = 8000
-  health_check_path = "/health"
-  
-  # Security configuration
-  allowed_cidr_blocks = ["10.0.0.0/8", "192.168.1.0/24"]
-  enable_waf          = true
-  rate_limit_per_5min = 2000
-  
-  tags = {
-    Environment = "production"
-  }
+<file path="modules/azure/outputs.tf">
+output "cluster_id" {
+  description = "The AKS cluster ID"
+  value       = module.aks.cluster_id
 }
-```
 
-## Configuration Options
-
-### Network Configuration
-- `internal_alb`: Deploy as internal (private) or internet-facing ALB
-- `allowed_cidr_blocks`: Control access with CIDR block restrictions
-- `public_subnet_ids`/`private_subnet_ids`: Subnet placement
-
-### Security Configuration  
-- `enable_waf`: Enable AWS WAF protection (recommended)
-- `rate_limit_per_5min`: Rate limiting threshold
-- `ssl_policy`: SSL/TLS policy for HTTPS listener
-- `enable_deletion_protection`: Prevent accidental deletion
-
-### Health Checks
-- `health_check_path`: Custom health check endpoint
-- Built-in health check configuration with reasonable defaults
-
-## Outputs
-
-- `alb_dns_name`: DNS name for accessing the application
-- `target_group_arn`: For ECS service integration
-- `security_group_id`: For allowing ECS task access
-- `waf_web_acl_arn`: WAF Web ACL ARN if enabled
-
-## Requirements
-
-- Valid SSL certificate (ACM or imported)
-- VPC with appropriate subnets (public for internet-facing, private for internal)
-- Target application that responds to health checks
-</file>
-
-<file path="modules/aws/ecs/secrets-sidecar/app.py">
-#!/usr/bin/env python3
-import json
-import os
-import logging
-from flask import Flask, jsonify, request
-import boto3
-from botocore.exceptions import ClientError
-
-app = Flask(__name__)
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Initialize AWS Secrets Manager client
-secrets_client = boto3.client('secretsmanager', region_name=os.environ.get('AWS_REGION', 'us-east-1'))
-secrets_prefix = os.environ.get('SECRETS_PREFIX', '')
-
-@app.route('/health')
-def health_check():
-    return jsonify({"status": "healthy"}), 200
-
-@app.route('/secret/<secret_name>')
-def get_secret(secret_name):
-    try:
-        full_secret_name = f"{secrets_prefix}{secret_name}"
-        
-        response = secrets_client.get_secret_value(SecretId=full_secret_name)
-        secret_value = response['SecretString']
-        
-        # Try to parse as JSON, fall back to string
-        try:
-            parsed_secret = json.loads(secret_value)
-            return jsonify({"value": parsed_secret})
-        except json.JSONDecodeError:
-            return jsonify({"value": secret_value})
-            
-    except ClientError as e:
-        error_code = e.response['Error']['Code']
-        logger.error(f"Error retrieving secret {secret_name}: {error_code}")
-        
-        if error_code == 'DecryptionFailureException':
-            return jsonify({"error": "Secret decryption failed"}), 500
-        elif error_code == 'InternalServiceErrorException':
-            return jsonify({"error": "Internal service error"}), 500
-        elif error_code == 'InvalidParameterException':
-            return jsonify({"error": "Invalid parameter"}), 400
-        elif error_code == 'InvalidRequestException':
-            return jsonify({"error": "Invalid request"}), 400
-        elif error_code == 'ResourceNotFoundException':
-            return jsonify({"error": "Secret not found"}), 404
-        else:
-            return jsonify({"error": "Unknown error"}), 500
-    except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}")
-        return jsonify({"error": "Internal server error"}), 500
-
-@app.route('/secrets')
-def list_secrets():
-    try:
-        response = secrets_client.list_secrets(
-            Filters=[
-                {
-                    'Key': 'name',
-                    'Values': [f'{secrets_prefix}*']
-                }
-            ]
-        )
-        
-        secret_names = [secret['Name'].replace(secrets_prefix, '') for secret in response['SecretList']]
-        return jsonify({"secrets": secret_names})
-        
-    except Exception as e:
-        logger.error(f"Error listing secrets: {str(e)}")
-        return jsonify({"error": "Failed to list secrets"}), 500
-
-@app.route('/secret/<secret_name>/<key>')
-def get_secret_key(secret_name, key):
-    try:
-        full_secret_name = f"{secrets_prefix}{secret_name}"
-        
-        response = secrets_client.get_secret_value(SecretId=full_secret_name)
-        secret_value = response['SecretString']
-        
-        try:
-            parsed_secret = json.loads(secret_value)
-            if key in parsed_secret:
-                return jsonify({"value": parsed_secret[key]})
-            else:
-                return jsonify({"error": f"Key '{key}' not found in secret"}), 404
-        except json.JSONDecodeError:
-            return jsonify({"error": "Secret is not JSON format"}), 400
-            
-    except ClientError as e:
-        error_code = e.response['Error']['Code']
-        logger.error(f"Error retrieving secret {secret_name}: {error_code}")
-        
-        if error_code == 'ResourceNotFoundException':
-            return jsonify({"error": "Secret not found"}), 404
-        else:
-            return jsonify({"error": "Failed to retrieve secret"}), 500
-    except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}")
-        return jsonify({"error": "Internal server error"}), 500
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080, debug=False)
-</file>
-
-<file path="modules/aws/ecs/secrets-sidecar/build.sh">
-#!/bin/bash
-
-# Build script for secrets-sidecar container
-# Usage: ./build.sh [IMAGE_NAME] [TAG]
-
-IMAGE_NAME=${1:-secrets-sidecar}
-TAG=${2:-latest}
-FULL_IMAGE_NAME="${IMAGE_NAME}:${TAG}"
-
-echo "Building secrets-sidecar Docker image: $FULL_IMAGE_NAME"
-
-# Build the Docker image
-docker build -t "$FULL_IMAGE_NAME" .
-
-if [ $? -eq 0 ]; then
-    echo "✅ Successfully built $FULL_IMAGE_NAME"
-    echo ""
-    echo "To push to ECR:"
-    echo "1. Create ECR repository: aws ecr create-repository --repository-name $IMAGE_NAME"
-    echo "2. Get login token: aws ecr get-login-password --region <region> | docker login --username AWS --password-stdin <account>.dkr.ecr.<region>.amazonaws.com"
-    echo "3. Tag image: docker tag $FULL_IMAGE_NAME <account>.dkr.ecr.<region>.amazonaws.com/$IMAGE_NAME:$TAG"
-    echo "4. Push image: docker push <account>.dkr.ecr.<region>.amazonaws.com/$IMAGE_NAME:$TAG"
-    echo ""
-    echo "To test locally:"
-    echo "docker run -p 8080:8080 -e AWS_REGION=us-east-1 -e SECRETS_PREFIX=myapp/ $FULL_IMAGE_NAME"
-else
-    echo "❌ Failed to build $FULL_IMAGE_NAME"
-    exit 1
-fi
-</file>
-
-<file path="modules/aws/ecs/secrets-sidecar/Dockerfile">
-FROM python:3.11-slim
-
-WORKDIR /app
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements and install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy application code
-COPY app.py .
-
-# Create non-root user for security
-RUN groupadd -r appuser && useradd -r -g appuser appuser
-RUN chown -R appuser:appuser /app
-USER appuser
-
-# Expose port
-EXPOSE 8080
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
-
-# Run the application
-CMD ["python", "app.py"]
-</file>
-
-<file path="modules/aws/ecs/secrets-sidecar/README.md">
-# Secrets Manager Sidecar
-
-A lightweight Python Flask application that provides a REST API for accessing AWS Secrets Manager secrets from within ECS containers.
-
-## Features
-
-- Secure access to AWS Secrets Manager secrets
-- JSON and string secret support
-- Health check endpoint
-- Key-specific secret retrieval
-- Comprehensive error handling
-- Non-root container execution
-
-## API Endpoints
-
-- `GET /health` - Health check endpoint
-- `GET /secret/<secret_name>` - Get entire secret value
-- `GET /secret/<secret_name>/<key>` - Get specific key from JSON secret
-- `GET /secrets` - List available secrets with configured prefix
-
-## Environment Variables
-
-- `AWS_REGION` - AWS region (default: us-east-1)
-- `SECRETS_PREFIX` - Prefix for filtering secrets (default: empty)
-
-## Usage from Main Container
-
-```bash
-# Get a secret
-curl http://localhost:8080/secret/database-credentials
-
-# Get a specific key from a JSON secret
-curl http://localhost:8080/secret/database-credentials/password
-
-# Health check
-curl http://localhost:8080/health
-```
-
-## Building the Image
-
-```bash
-docker build -t secrets-sidecar:latest .
-```
-</file>
-
-<file path="modules/aws/ecs/README.md">
-# AWS ECS Module
-
-This module creates a secure AWS ECS (Elastic Container Service) cluster with Fargate launch type, including:
-
-- ECS cluster with Container Insights enabled
-- Secure task definition with secrets management sidecar
-- IAM roles with least-privilege permissions
-- CloudWatch logging
-- Self-signed certificate generation and management
-- Integration with Application Load Balancer
-
-## Features
-
-### Security
-- **Fargate Launch Type**: No EC2 instances to manage, built-in isolation
-- **Least Privilege IAM**: Separate execution and task roles with minimal permissions
-- **Secrets Management**: Dedicated sidecar container for secure secret access
-- **Network Security**: Private subnets, security groups with minimal access
-- **Certificate Management**: Self-signed certificates stored in Secrets Manager
-
-### Secrets Management
-The module includes a Python-based secrets manager sidecar that:
-- Runs alongside your application container
-- Provides REST API access to AWS Secrets Manager
-- Handles certificate storage and retrieval
-- Runs as non-root for enhanced security
-
-## Usage
-
-```hcl
-module "ecs" {
-  source = "./modules/aws/ecs"
-
-  cluster_name       = "my-app"
-  vpc_id            = "vpc-123456"
-  private_subnet_ids = ["subnet-123", "subnet-456"]
-  region            = "us-west-2"
-  
-  # Container Configuration
-  container_image = "my-app:latest"
-  container_port  = 8000
-  
-  # Secrets
-  secrets_prefix = "myapp/"
-  secrets = {
-    database_url = "postgresql://..."
-    api_key     = "secret-key"
-  }
-  
-  # Certificate (optional - will create self-signed if not provided)
-  # acm_certificate_arn = "arn:aws:acm:..."
-  
-  tags = {
-    Environment = "production"
-  }
+output "cluster_name" {
+  description = "The AKS cluster name"
+  value       = module.aks.cluster_name
 }
-```
 
-## Accessing Secrets from Your Container
+output "cluster_fqdn" {
+  description = "The AKS cluster FQDN"
+  value       = module.aks.cluster_fqdn
+}
 
-Your application container can access secrets via the sidecar:
+output "cluster_endpoint" {
+  description = "The AKS cluster endpoint"
+  value       = module.aks.cluster_endpoint
+  sensitive   = true
+}
 
-```bash
-# Get entire secret
-curl http://localhost:8080/secret/database-credentials
+output "kube_config" {
+  description = "Kubernetes config for the cluster"
+  value       = module.aks.kube_config
+  sensitive   = true
+}
 
-# Get specific key from JSON secret  
-curl http://localhost:8080/secret/database-credentials/password
+output "resource_group_name" {
+  description = "Resource group name"
+  value       = module.vpc.resource_group_name
+}
 
-# Get certificate
-curl http://localhost:8080/secret/certificate
-```
+output "vnet_id" {
+  description = "Virtual network ID"
+  value       = module.vpc.vnet_id
+}
 
-## Certificate Handling
+output "aks_subnet_id" {
+  description = "AKS subnet ID"
+  value       = module.vpc.aks_subnet_id
+}
 
-The module supports two certificate modes:
+output "identity_principal_id" {
+  description = "The principal ID of the managed identity"
+  value       = module.aks.identity_principal_id
+}
 
-1. **Existing ACM Certificate**: Provide `acm_certificate_arn`
-2. **Self-Signed Certificate**: Automatically generated and stored in Secrets Manager
+output "identity_client_id" {
+  description = "The client ID of the managed identity"
+  value       = module.aks.identity_client_id
+}
 
-Self-signed certificates are stored in Secrets Manager with both the certificate and private key, accessible via the secrets sidecar.
+output "disk_encryption_set_id" {
+  description = "The disk encryption set ID"
+  value       = module.aks.disk_encryption_set_id
+}
 
-## Requirements
+output "key_vault_key_id" {
+  description = "The Key Vault key ID used for encryption"
+  value       = module.aks.key_vault_key_id
+}
+</file>
 
-- AWS provider configured with appropriate permissions
-- VPC with private subnets
-- Docker images pushed to accessible registry (ECR, Docker Hub, etc.)
+<file path="modules/azure/variables.tf">
+variable "cluster_name" {
+  description = "Name of the AKS cluster"
+  type        = string
+}
 
-## Security Considerations
+variable "resource_group_name" {
+  description = "Name of the resource group"
+  type        = string
+}
 
-- Tasks run in private subnets only
-- All secrets access goes through the sidecar container
-- IAM roles follow principle of least privilege
-- Container Insights enabled for monitoring
-- All communications encrypted (HTTPS for ALB, localhost for sidecar)
+variable "location" {
+  description = "Azure region"
+  type        = string
+}
+
+variable "environment" {
+  description = "Environment name"
+  type        = string
+}
+
+variable "kubernetes_version" {
+  description = "Kubernetes version"
+  type        = string
+  default     = "1.28"
+}
+
+variable "node_size_config" {
+  description = "Node size configuration (small, medium, large)"
+  type        = string
+  default     = "small"
+}
+
+# Network configuration
+variable "vnet_cidr" {
+  description = "CIDR block for the virtual network"
+  type        = string
+  default     = "10.0.0.0/16"
+}
+
+variable "aks_subnet_cidr" {
+  description = "CIDR block for AKS subnet"
+  type        = string
+  default     = "10.0.1.0/24"
+}
+
+variable "private_subnet_cidr" {
+  description = "CIDR block for private subnet"
+  type        = string
+  default     = "10.0.2.0/24"
+}
+
+variable "bastion_subnet_cidr" {
+  description = "CIDR block for bastion subnet"
+  type        = string
+  default     = "10.0.3.0/24"
+}
+
+variable "dns_service_ip" {
+  description = "DNS service IP address"
+  type        = string
+  default     = "10.0.0.10"
+}
+
+variable "service_cidr" {
+  description = "Service CIDR for Kubernetes services"
+  type        = string
+  default     = "10.0.0.0/16"
+}
+
+variable "network_plugin" {
+  description = "Network plugin for AKS"
+  type        = string
+  default     = "azure"
+}
+
+variable "network_policy" {
+  description = "Network policy for AKS"
+  type        = string
+  default     = "azure"
+}
+
+# Security and encryption
+variable "key_vault_key_id" {
+  description = "ID of existing Key Vault key for encryption"
+  type        = string
+  default     = null
+}
+
+variable "enable_host_encryption" {
+  description = "Enable host encryption for nodes"
+  type        = bool
+  default     = true
+}
+
+variable "enable_azure_policy" {
+  description = "Enable Azure Policy for AKS"
+  type        = bool
+  default     = true
+}
+
+variable "enable_microsoft_defender" {
+  description = "Enable Microsoft Defender for Cloud"
+  type        = bool
+  default     = true
+}
+
+variable "enable_workload_identity" {
+  description = "Enable workload identity"
+  type        = bool
+  default     = true
+}
+
+# Infrastructure features
+variable "enable_nat_gateway" {
+  description = "Enable NAT Gateway for outbound internet access"
+  type        = bool
+  default     = true
+}
+
+variable "enable_bastion" {
+  description = "Enable Azure Bastion for secure remote access"
+  type        = bool
+  default     = false
+}
+
+variable "create_private_dns_zone" {
+  description = "Create private DNS zone for AKS"
+  type        = bool
+  default     = true
+}
+
+variable "enable_log_analytics" {
+  description = "Enable Log Analytics workspace"
+  type        = bool
+  default     = true
+}
+
+variable "log_retention_days" {
+  description = "Log retention in days"
+  type        = number
+  default     = 30
+}
+
+# Optional resources
+variable "container_registry_id" {
+  description = "Azure Container Registry ID to grant pull access"
+  type        = string
+  default     = null
+}
+
+variable "workload_node_taints" {
+  description = "Taints for workload node pool"
+  type = list(object({
+    key    = string
+    value  = string
+    effect = string
+  }))
+  default = []
+}
+
+variable "tags" {
+  description = "Tags to apply to resources"
+  type        = map(string)
+  default     = {}
+}
 </file>
 
 <file path="scripts/generate-certificates.sh">
@@ -6584,48 +7215,6 @@ tags = {
 # ============================================================================
 </file>
 
-<file path="modules/aws/alb/outputs.tf">
-output "alb_arn" {
-  description = "ARN of the Application Load Balancer"
-  value       = aws_lb.main.arn
-}
-
-output "alb_dns_name" {
-  description = "DNS name of the Application Load Balancer"
-  value       = aws_lb.main.dns_name
-}
-
-output "alb_zone_id" {
-  description = "Zone ID of the Application Load Balancer"
-  value       = aws_lb.main.zone_id
-}
-
-output "target_group_arn" {
-  description = "ARN of the target group"
-  value       = aws_lb_target_group.main.arn
-}
-
-output "security_group_id" {
-  description = "ID of the ALB security group"
-  value       = aws_security_group.alb.id
-}
-
-output "waf_web_acl_arn" {
-  description = "ARN of the WAF Web ACL (if enabled)"
-  value       = var.enable_waf ? aws_wafv2_web_acl.main[0].arn : null
-}
-
-output "selected_subnet_ids" {
-  description = "List of subnet IDs selected for the ALB (unique AZs)"
-  value       = local.unique_az_subnets
-}
-
-output "selected_availability_zones" {
-  description = "List of availability zones for the selected subnets"
-  value       = distinct([for subnet in data.aws_subnet.selected : subnet.availability_zone])
-}
-</file>
-
 <file path="modules/aws/bastion/main.tf">
 data "aws_ami" "amazon_linux" {
   most_recent = true
@@ -6810,68 +7399,6 @@ resource "aws_cloudwatch_log_group" "bastion" {
   retention_in_days = var.log_retention_in_days
 
   tags = var.tags
-}
-</file>
-
-<file path="modules/aws/ecs/outputs.tf">
-output "cluster_id" {
-  description = "ID of the ECS cluster"
-  value       = aws_ecs_cluster.main.id
-}
-
-output "cluster_name" {
-  description = "Name of the ECS cluster"
-  value       = aws_ecs_cluster.main.name
-}
-
-output "cluster_arn" {
-  description = "ARN of the ECS cluster"
-  value       = aws_ecs_cluster.main.arn
-}
-
-output "task_definition_arn" {
-  description = "ARN of the ECS task definition"
-  value       = aws_ecs_task_definition.main.arn
-}
-
-output "service_name" {
-  description = "Name of the ECS service (created in main module)"
-  value       = var.cluster_name
-}
-
-output "security_group_id" {
-  description = "ID of the ECS tasks security group"
-  value       = aws_security_group.ecs_tasks.id
-}
-
-output "certificate_arn" {
-  description = "ARN of the certificate (either provided or self-signed)"
-  value       = var.acm_certificate_arn != null ? var.acm_certificate_arn : (var.create_self_signed_cert ? aws_acm_certificate.self_signed[0].arn : null)
-}
-
-output "secrets_endpoint" {
-  description = "Endpoint for accessing secrets via sidecar"
-  value       = "http://localhost:8080"
-}
-
-output "ec2_security_group_id" {
-  description = "ID of the ECS EC2 instances security group (null if using Fargate)"
-  value       = var.launch_type == "EC2" ? aws_security_group.ecs_instances[0].id : null
-}
-
-output "capacity_provider_name" {
-  description = "Name of the ECS capacity provider (null if using Fargate)"
-  value       = var.launch_type == "EC2" ? aws_ecs_capacity_provider.ec2[0].name : null
-}
-
-output "autoscaling_group_arn" {
-  description = "ARN of the Auto Scaling Group for EC2 instances (null if using Fargate)"
-  value       = var.launch_type == "EC2" ? aws_autoscaling_group.ecs_instances[0].arn : null
-}
-
-output "launch_type" {
-  description = "The launch type being used (FARGATE or EC2)"
-  value       = var.launch_type
 }
 </file>
 
@@ -7660,522 +8187,60 @@ tags = {
 }
 </file>
 
-<file path="modules/aws/alb/main.tf">
-# Data source to get subnet details
-data "aws_subnet" "selected" {
-  for_each = toset(var.internal_alb ? var.private_subnet_ids : var.public_subnet_ids)
-  id       = each.value
-}
-
-# Local to ensure unique availability zones
-locals {
-  # Get unique AZs from the selected subnets
-  subnet_azs = {
-    for subnet_id, subnet in data.aws_subnet.selected :
-    subnet_id => subnet.availability_zone
-  }
-
-  # Group subnets by AZ and take only the first subnet from each AZ
-  unique_az_subnets = [
-    for az in distinct(values(local.subnet_azs)) : [
-      for subnet_id, subnet_az in local.subnet_azs :
-      subnet_id if subnet_az == az
-    ][0]
-  ]
-}
-
-# Application Load Balancer
-resource "aws_lb" "main" {
-  name               = "${var.cluster_name}-alb"
-  internal           = var.internal_alb
-  load_balancer_type = "application"
-  security_groups    = [aws_security_group.alb.id]
-  subnets            = local.unique_az_subnets
-
-  enable_deletion_protection = var.enable_deletion_protection
-
-  # Security best practices
-  drop_invalid_header_fields = true
-
-  tags = var.tags
-}
-
-# Data source for VPC CIDR
-data "aws_vpc" "main" {
-  id = var.vpc_id
-}
-
-# Security Group for ALB
-resource "aws_security_group" "alb" {
-  name_prefix = "${var.cluster_name}-alb-"
-  vpc_id      = var.vpc_id
-
-  # HTTP redirect to HTTPS
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = var.internal_alb && length(var.allowed_cidr_blocks) == 1 && var.allowed_cidr_blocks[0] == "0.0.0.0/0" ? [data.aws_vpc.main.cidr_block] : var.allowed_cidr_blocks
-  }
-
-  # HTTPS
-  ingress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = var.internal_alb && length(var.allowed_cidr_blocks) == 1 && var.allowed_cidr_blocks[0] == "0.0.0.0/0" ? [data.aws_vpc.main.cidr_block] : var.allowed_cidr_blocks
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = merge(var.tags, {
-    Name = "${var.cluster_name}-alb"
-  })
-}
-
-# Target Group
-resource "aws_lb_target_group" "main" {
-  name        = "${var.cluster_name}-tg"
-  port        = var.target_port
-  protocol    = "HTTP"
-  vpc_id      = var.vpc_id
-  target_type = var.target_type
-
-  health_check {
-    enabled             = true
-    healthy_threshold   = 2
-    interval            = 30
-    matcher             = "200"
-    path                = var.health_check_path
-    port                = "traffic-port"
-    protocol            = "HTTP"
-    timeout             = 5
-    unhealthy_threshold = 2
-  }
-
-  tags = var.tags
-}
-
-# HTTP Listener (redirect to HTTPS)
-resource "aws_lb_listener" "http" {
-  load_balancer_arn = aws_lb.main.arn
-  port              = "80"
-  protocol          = "HTTP"
-
-  default_action {
-    type = "redirect"
-
-    redirect {
-      port        = "443"
-      protocol    = "HTTPS"
-      status_code = "HTTP_301"
+<file path="modules/azure/main.tf">
+terraform {
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 3.0"
     }
   }
 }
 
-# HTTPS Listener
-resource "aws_lb_listener" "https" {
-  load_balancer_arn = aws_lb.main.arn
-  port              = "443"
-  protocol          = "HTTPS"
-  ssl_policy        = var.ssl_policy
-  certificate_arn   = var.certificate_arn
+# VPC/Network module
+module "vpc" {
+  source = "./vpc"
 
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.main.arn
-  }
+  resource_group_name = var.resource_group_name
+  location           = var.location
+  name_prefix        = var.cluster_name
+  vnet_cidr          = var.vnet_cidr
+  aks_subnet_cidr    = var.aks_subnet_cidr
+  private_subnet_cidr = var.private_subnet_cidr
+  bastion_subnet_cidr = var.bastion_subnet_cidr
+  enable_nat_gateway  = var.enable_nat_gateway
+  enable_bastion      = var.enable_bastion
+  create_private_dns_zone = var.create_private_dns_zone
+  enable_log_analytics = var.enable_log_analytics
+  log_retention_days   = var.log_retention_days
+  tags                 = var.tags
 }
 
-# WAF Web ACL (optional)
-resource "aws_wafv2_web_acl" "main" {
-  count = var.enable_waf ? 1 : 0
-  name  = "${var.cluster_name}-waf"
-  scope = "REGIONAL"
+# AKS module
+module "aks" {
+  source = "./aks"
 
-  default_action {
-    allow {}
-  }
-
-  # AWS Managed Rule - Common Rule Set
-  rule {
-    name     = "AWSManagedRulesCommonRuleSet"
-    priority = 1
-
-    override_action {
-      none {}
-    }
-
-    statement {
-      managed_rule_group_statement {
-        name        = "AWSManagedRulesCommonRuleSet"
-        vendor_name = "AWS"
-      }
-    }
-
-    visibility_config {
-      cloudwatch_metrics_enabled = true
-      metric_name                = "CommonRuleSetMetric"
-      sampled_requests_enabled   = true
-    }
-  }
-
-  # AWS Managed Rule - Known Bad Inputs
-  rule {
-    name     = "AWSManagedRulesKnownBadInputsRuleSet"
-    priority = 2
-
-    override_action {
-      none {}
-    }
-
-    statement {
-      managed_rule_group_statement {
-        name        = "AWSManagedRulesKnownBadInputsRuleSet"
-        vendor_name = "AWS"
-      }
-    }
-
-    visibility_config {
-      cloudwatch_metrics_enabled = true
-      metric_name                = "KnownBadInputsRuleSetMetric"
-      sampled_requests_enabled   = true
-    }
-  }
-
-  # Rate limiting rule
-  rule {
-    name     = "RateLimitRule"
-    priority = 3
-
-    action {
-      block {}
-    }
-
-    statement {
-      rate_based_statement {
-        limit              = var.rate_limit_per_5min
-        aggregate_key_type = "IP"
-      }
-    }
-
-    visibility_config {
-      cloudwatch_metrics_enabled = true
-      metric_name                = "RateLimitRuleMetric"
-      sampled_requests_enabled   = true
-    }
-  }
-
-  visibility_config {
-    cloudwatch_metrics_enabled = true
-    metric_name                = "${var.cluster_name}WAFMetric"
-    sampled_requests_enabled   = true
-  }
-
-  tags = var.tags
-}
-
-# Associate WAF with ALB
-resource "aws_wafv2_web_acl_association" "main" {
-  count        = var.enable_waf ? 1 : 0
-  resource_arn = aws_lb.main.arn
-  web_acl_arn  = aws_wafv2_web_acl.main[0].arn
-}
-</file>
-
-<file path="modules/aws/alb/variables.tf">
-variable "cluster_name" {
-  description = "Name of the cluster (used for naming resources)"
-  type        = string
-}
-
-variable "vpc_id" {
-  description = "VPC ID where ALB will be created"
-  type        = string
-}
-
-variable "public_subnet_ids" {
-  description = "List of public subnet IDs for internet-facing ALB"
-  type        = list(string)
-}
-
-variable "private_subnet_ids" {
-  description = "List of private subnet IDs for internal ALB"
-  type        = list(string)
-}
-
-variable "certificate_arn" {
-  description = "ARN of the SSL certificate for HTTPS listener"
-  type        = string
-}
-
-variable "target_port" {
-  description = "Port for the target group"
-  type        = number
-  default     = 8000
-}
-
-variable "health_check_path" {
-  description = "Health check path"
-  type        = string
-  default     = "/health"
-}
-
-variable "internal_alb" {
-  description = "Whether the ALB should be internal (private)"
-  type        = bool
-  default     = true
-}
-
-variable "allowed_cidr_blocks" {
-  description = "List of CIDR blocks allowed to access the ALB"
-  type        = list(string)
-  default     = ["0.0.0.0/0"]
-}
-
-variable "ssl_policy" {
-  description = "SSL policy for HTTPS listener"
-  type        = string
-  default     = "ELBSecurityPolicy-TLS-1-2-2017-01"
-}
-
-variable "enable_deletion_protection" {
-  description = "Enable deletion protection for ALB"
-  type        = bool
-  default     = false
-}
-
-variable "enable_waf" {
-  description = "Enable AWS WAF for additional security"
-  type        = bool
-  default     = true
-}
-
-variable "rate_limit_per_5min" {
-  description = "Rate limit per IP per 5 minutes for WAF"
-  type        = number
-  default     = 2000
-}
-
-variable "target_type" {
-  description = "Target type for the ALB target group (ip for Fargate, instance for EC2)"
-  type        = string
-  default     = "ip"
-  validation {
-    condition     = contains(["ip", "instance"], var.target_type)
-    error_message = "Target type must be either 'ip' or 'instance'."
-  }
-}
-
-variable "tags" {
-  description = "Tags to apply to resources"
-  type        = map(string)
-  default     = {}
-}
-</file>
-
-<file path="modules/aws/ecs/variables.tf">
-variable "cluster_name" {
-  description = "Name of the ECS cluster"
-  type        = string
-}
-
-variable "vpc_id" {
-  description = "VPC ID where ECS cluster will be created"
-  type        = string
-}
-
-variable "private_subnet_ids" {
-  description = "List of private subnet IDs for ECS tasks"
-  type        = list(string)
-  validation {
-    condition     = length(var.private_subnet_ids) > 0
-    error_message = "At least one private subnet ID must be provided for ECS tasks."
-  }
-}
-
-variable "region" {
-  description = "AWS region"
-  type        = string
-}
-
-variable "container_image" {
-  description = "Docker image for the main application container"
-  type        = string
-}
-
-variable "container_port" {
-  description = "Port exposed by the main application container"
-  type        = number
-  default     = 8000
-}
-
-variable "secrets_sidecar_image" {
-  description = "Docker image for the secrets manager sidecar"
-  type        = string
-  default     = "secrets-sidecar:latest"
-}
-
-variable "task_cpu" {
-  description = "CPU units for the ECS task (256, 512, 1024, 2048, 4096)"
-  type        = number
-  default     = 512
-  validation {
-    condition     = contains([256, 512, 1024, 2048, 4096], var.task_cpu)
-    error_message = "Task CPU must be one of: 256, 512, 1024, 2048, 4096."
-  }
-}
-
-variable "task_memory" {
-  description = "Memory (MB) for the ECS task"
-  type        = number
-  default     = 1024
-}
-
-variable "desired_count" {
-  description = "Desired number of ECS tasks"
-  type        = number
-  default     = 2
-}
-
-variable "environment_variables" {
-  description = "List of environment variables for the main container"
-  type = list(object({
-    name  = string
-    value = string
-  }))
-  default = []
-}
-
-variable "secrets" {
-  description = "Map of secrets to store in AWS Secrets Manager"
-  type        = map(string)
-  default     = {}
-  sensitive   = true
-}
-
-variable "secrets_prefix" {
-  description = "Prefix for secrets in AWS Secrets Manager"
-  type        = string
-  default     = ""
-}
-
-variable "acm_certificate_arn" {
-  description = "ARN of existing ACM certificate (if null, self-signed certificate will be created)"
-  type        = string
-  default     = null
-}
-
-variable "create_self_signed_cert" {
-  description = "Whether to create self-signed certificate when ACM certificate ARN is not provided"
-  type        = bool
-  default     = true
-}
-
-variable "domain_name" {
-  description = "Domain name for self-signed certificate (defaults to cluster_name.local)"
-  type        = string
-  default     = null
-}
-
-# Note: ALB integration handled at main module level to avoid circular dependencies
-
-variable "enable_secrets_sidecar" {
-  description = "Whether to enable the secrets manager sidecar container"
-  type        = bool
-  default     = true
-}
-
-variable "log_retention_in_days" {
-  description = "CloudWatch log retention in days"
-  type        = number
-  default     = 7
-}
-
-variable "tags" {
-  description = "Tags to apply to resources"
-  type        = map(string)
-  default     = {}
-}
-
-# EC2 Launch Type Variables
-variable "launch_type" {
-  description = "Launch type for ECS tasks (FARGATE or EC2)"
-  type        = string
-  default     = "FARGATE"
-  validation {
-    condition     = contains(["FARGATE", "EC2"], var.launch_type)
-    error_message = "Launch type must be either FARGATE or EC2."
-  }
-}
-
-variable "node_size_config" {
-  description = "Node size configuration for ECS EC2 instances: small, medium, or large"
-  type        = string
-  default     = "small"
-  validation {
-    condition     = contains(["small", "medium", "large"], var.node_size_config)
-    error_message = "Node size config must be 'small', 'medium', or 'large'."
-  }
-}
-
-variable "instance_type" {
-  description = "EC2 instance type for ECS container instances (only used when launch_type is EC2, overrides node_size_config)"
-  type        = string
-  default     = null
-}
-
-variable "min_size" {
-  description = "Minimum number of EC2 instances in the Auto Scaling Group (only used when launch_type is EC2, overrides node_size_config)"
-  type        = number
-  default     = null
-}
-
-variable "max_size" {
-  description = "Maximum number of EC2 instances in the Auto Scaling Group (only used when launch_type is EC2, overrides node_size_config)"
-  type        = number
-  default     = null
-}
-
-variable "desired_capacity" {
-  description = "Desired number of EC2 instances in the Auto Scaling Group (only used when launch_type is EC2, overrides node_size_config)"
-  type        = number
-  default     = null
-}
-
-variable "key_name" {
-  description = "Name of the AWS key pair for EC2 instances (optional, only used when launch_type is EC2)"
-  type        = string
-  default     = null
-}
-
-variable "enable_container_insights" {
-  description = "Enable CloudWatch Container Insights for the cluster"
-  type        = bool
-  default     = true
-}
-
-variable "ec2_spot_price" {
-  description = "The maximum price per hour for spot instances (only used when launch_type is EC2, leave null for on-demand)"
-  type        = string
-  default     = null
-}
-
-variable "ebs_volume_size" {
-  description = "Size of the EBS volume for EC2 instances in GB (only used when launch_type is EC2, overrides node_size_config)"
-  type        = number
-  default     = null
-}
-
-variable "ebs_volume_type" {
-  description = "Type of the EBS volume for EC2 instances (only used when launch_type is EC2)"
-  type        = string
-  default     = "gp3"
+  cluster_name                = var.cluster_name
+  resource_group_name         = module.vpc.resource_group_name
+  location                   = var.location
+  kubernetes_version         = var.kubernetes_version
+  node_size_config          = var.node_size_config
+  subnet_id                 = module.vpc.aks_subnet_id
+  private_dns_zone_id       = module.vpc.private_dns_zone_id != null ? module.vpc.private_dns_zone_id : "System"
+  network_plugin            = var.network_plugin
+  network_policy            = var.network_policy
+  dns_service_ip            = var.dns_service_ip
+  service_cidr              = var.service_cidr
+  key_vault_key_id          = var.key_vault_key_id
+  enable_host_encryption    = var.enable_host_encryption
+  enable_azure_policy       = var.enable_azure_policy
+  enable_microsoft_defender = var.enable_microsoft_defender
+  log_analytics_workspace_id = module.vpc.log_analytics_workspace_id
+  enable_workload_identity  = var.enable_workload_identity
+  container_registry_id     = var.container_registry_id
+  workload_node_taints      = var.workload_node_taints
+  environment               = var.environment
+  tags                      = var.tags
 }
 </file>
 
@@ -8370,8 +8435,9 @@ resource "aws_iam_role_policy_attachment" "nodes_AmazonEC2ContainerRegistryReadO
   role       = aws_iam_role.nodes.name
 }
 
-# KMS key for EKS cluster encryption
+# KMS key for EKS cluster encryption - create only if not provided
 resource "aws_kms_key" "cluster" {
+  count       = var.kms_key_arn == null ? 1 : 0
   description = "EKS Secret Encryption Key for ${var.cluster_name}"
 
   policy = jsonencode({
@@ -8405,15 +8471,21 @@ resource "aws_kms_key" "cluster" {
 }
 
 resource "aws_kms_alias" "cluster" {
+  count         = var.kms_key_arn == null ? 1 : 0
   name          = "alias/eks-${var.cluster_name}"
-  target_key_id = aws_kms_key.cluster.key_id
+  target_key_id = aws_kms_key.cluster[0].key_id
+}
+
+# Local to determine which KMS key to use
+locals {
+  kms_key_arn = var.kms_key_arn != null ? var.kms_key_arn : aws_kms_key.cluster[0].arn
 }
 
 # CloudWatch log group for EKS cluster
 resource "aws_cloudwatch_log_group" "cluster" {
   name              = "/aws/eks/${var.cluster_name}/cluster"
   retention_in_days = var.log_retention_in_days
-  kms_key_id        = aws_kms_key.cluster.arn
+  kms_key_id        = local.kms_key_arn
 
   tags = var.tags
 }
@@ -8435,7 +8507,7 @@ resource "aws_eks_cluster" "main" {
 
   encryption_config {
     provider {
-      key_arn = aws_kms_key.cluster.arn
+      key_arn = local.kms_key_arn
     }
     resources = ["secrets"]
   }
@@ -8560,56 +8632,56 @@ output "public_subnet_ids" {
   value       = local.public_subnet_ids
 }
 
-# EKS Outputs - Only available when EKS is enabled and ECS is disabled (isolated)
+# EKS Outputs
 output "cluster_endpoint" {
   description = "EKS cluster endpoint"
-  value       = var.enable_eks && !var.enable_ecs ? module.eks[0].cluster_endpoint : null
+  value       = var.enable_eks ? module.eks[0].cluster_endpoint : null
 }
 
 output "cluster_ca_certificate" {
   description = "EKS cluster CA certificate"
-  value       = var.enable_eks && !var.enable_ecs ? module.eks[0].cluster_ca_certificate : null
+  value       = var.enable_eks ? module.eks[0].cluster_ca_certificate : null
   sensitive   = true
 }
 
 output "cluster_id" {
   description = "EKS cluster ID"
-  value       = var.enable_eks && !var.enable_ecs ? module.eks[0].cluster_id : null
+  value       = var.enable_eks ? module.eks[0].cluster_id : null
 }
 
 output "cluster_name" {
   description = "EKS cluster name"
-  value       = var.enable_eks && !var.enable_ecs ? module.eks[0].cluster_name : var.cluster_name
+  value       = var.enable_eks ? module.eks[0].cluster_name : var.cluster_name
 }
 
 output "cluster_arn" {
   description = "EKS cluster ARN"
-  value       = var.enable_eks && !var.enable_ecs ? module.eks[0].cluster_arn : null
+  value       = var.enable_eks ? module.eks[0].cluster_arn : null
 }
 
 output "cluster_version" {
   description = "EKS cluster version"
-  value       = var.enable_eks && !var.enable_ecs ? module.eks[0].cluster_version : null
+  value       = var.enable_eks ? module.eks[0].cluster_version : null
 }
 
 output "cluster_security_group_id" {
   description = "Security group ID attached to the EKS cluster"
-  value       = var.enable_eks && !var.enable_ecs ? module.eks[0].cluster_security_group_id : null
+  value       = var.enable_eks ? module.eks[0].cluster_security_group_id : null
 }
 
 output "node_security_group_id" {
   description = "Security group ID attached to the EKS worker nodes"
-  value       = var.enable_eks && !var.enable_ecs ? module.eks[0].node_security_group_id : null
+  value       = var.enable_eks ? module.eks[0].node_security_group_id : null
 }
 
 output "oidc_issuer_url" {
   description = "The URL on the EKS cluster OIDC Issuer"
-  value       = var.enable_eks && !var.enable_ecs ? module.eks[0].oidc_issuer_url : null
+  value       = var.enable_eks ? module.eks[0].oidc_issuer_url : null
 }
 
 output "kubeconfig_command" {
   description = "Command to get kubeconfig for EKS (requires bastion or VPN access for private cluster)"
-  value       = var.enable_eks && !var.enable_ecs ? module.eks[0].kubeconfig_command : "EKS cluster not enabled or ECS is enabled"
+  value       = var.enable_eks ? module.eks[0].kubeconfig_command : "EKS cluster not enabled"
 }
 
 # Bastion Outputs
@@ -8638,860 +8710,17 @@ output "bastion_session_manager_command" {
   value       = var.enable_bastion ? module.bastion[0].session_manager_command : "Bastion host not enabled"
 }
 
-# ECS Outputs
-output "ecs_cluster_id" {
-  description = "ECS cluster ID"
-  value       = var.enable_ecs ? module.ecs[0].cluster_id : null
-}
-
-output "ecs_cluster_arn" {
-  description = "ECS cluster ARN"
-  value       = var.enable_ecs ? module.ecs[0].cluster_arn : null
-}
-
-output "ecs_service_name" {
-  description = "ECS service name"
-  value       = var.enable_ecs ? aws_ecs_service.main_with_alb[0].name : null
-}
-
-output "alb_dns_name" {
-  description = "ALB DNS name for ECS service"
-  value       = var.enable_ecs ? module.alb[0].alb_dns_name : null
-}
-
-output "alb_zone_id" {
-  description = "ALB zone ID for ECS service"
-  value       = var.enable_ecs ? module.alb[0].alb_zone_id : null
-}
-
-output "ecs_certificate_arn" {
-  description = "ARN of certificate used for ECS (either provided or self-signed)"
-  value       = var.enable_ecs ? module.ecs[0].certificate_arn : null
-}
-
-output "secrets_endpoint" {
-  description = "Internal endpoint for accessing secrets from ECS containers"
-  value       = var.enable_ecs ? module.ecs[0].secrets_endpoint : null
-}
 
 # Security Information
 output "security_notes" {
   description = "Important security information about the deployment"
   value = {
     eks_private_access_only = var.enable_eks ? "EKS cluster has private endpoint access only" : "EKS not deployed"
-    ecs_fargate_secure      = var.enable_ecs ? "ECS running on Fargate with secure defaults" : "ECS not deployed"
     vpc_endpoints_enabled   = var.enable_vpc_endpoints ? "VPC endpoints enabled for private AWS API access" : "VPC endpoints disabled"
     bastion_required        = var.enable_eks && !var.enable_bastion ? "Bastion host or VPN required to access EKS cluster" : "Access configured"
     nat_gateway_enabled     = var.enable_nat_gateway ? "NAT Gateway enabled for outbound internet access" : "No outbound internet access from private subnets"
-    waf_enabled             = var.enable_ecs && var.ecs_enable_waf ? "AWS WAF enabled for ECS ALB protection" : "WAF protection disabled or ECS not deployed"
   }
 }
-</file>
-
-<file path="main.tf">
-terraform {
-  required_version = ">= 1.0"
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 6.0"
-    }
-  }
-}
-
-provider "aws" {
-  region = var.aws_region
-}
-
-
-module "aws_infrastructure" {
-  source = "./modules/aws"
-  count  = var.cloud_provider == "aws" ? 1 : 0
-
-  region           = var.aws_region
-  cluster_name     = var.cluster_name
-  environment      = var.environment
-  node_size_config = var.node_size_config
-
-  # VPC Configuration
-  vpc_id               = var.vpc_id
-  private_subnet_ids   = var.private_subnet_ids
-  public_subnet_ids    = var.public_subnet_ids
-  enable_nat_gateway   = var.enable_nat_gateway
-  enable_vpc_endpoints = var.enable_vpc_endpoints
-  enable_bastion       = var.enable_bastion
-
-  # ECS Configuration
-  enable_ecs                  = var.enable_ecs
-  ecs_launch_type             = var.ecs_launch_type
-  ecs_container_image         = var.ecs_container_image
-  ecs_container_port          = var.ecs_container_port
-  ecs_instance_type           = var.ecs_instance_type
-  ecs_key_name                = var.ecs_key_name
-  ecs_task_cpu                = var.ecs_task_cpu
-  ecs_task_memory             = var.ecs_task_memory
-  ecs_desired_count           = var.ecs_desired_count
-  ecs_secrets_prefix          = var.ecs_secrets_prefix
-  ecs_secrets                 = var.ecs_secrets
-  ecs_create_self_signed_cert = var.ecs_create_self_signed_cert
-  ecs_health_check_path       = var.ecs_health_check_path
-  ecs_internal_alb            = var.ecs_internal_alb
-  ecs_enable_waf              = var.ecs_enable_waf
-
-  tags = var.tags
-}
-</file>
-
-<file path="variables.tf">
-variable "cloud_provider" {
-  description = "Cloud provider to deploy to (azure or aws)"
-  type        = string
-  validation {
-    condition     = contains(["azure", "aws"], var.cloud_provider)
-    error_message = "Cloud provider must be either 'azure' or 'aws'."
-  }
-}
-
-variable "cluster_name" {
-  description = "Name of the cluster (Kubernetes EKS or ECS)"
-  type        = string
-}
-
-variable "environment" {
-  description = "Environment name (dev, staging, prod, perf)"
-  type        = string
-}
-
-variable "resource_group_name" {
-  description = "Azure resource group name (only used for Azure)"
-  type        = string
-  default     = ""
-}
-
-variable "location" {
-  description = "Azure location (only used for Azure)"
-  type        = string
-  default     = "East US"
-}
-
-variable "aws_region" {
-  description = "AWS region (only used for AWS)"
-  type        = string
-  default     = "us-east-1"
-}
-
-variable "node_size_config" {
-  description = "Node size configuration based on environment"
-  type        = string
-  validation {
-    condition     = contains(["small", "medium", "large"], var.node_size_config)
-    error_message = "Node size config must be one of: small, medium, large."
-  }
-}
-
-variable "tags" {
-  description = "Tags to apply to all resources"
-  type        = map(string)
-  default     = {}
-}
-
-# ECS Configuration Variables (AWS only)
-variable "enable_ecs" {
-  description = "Whether to create ECS cluster and services (AWS only)"
-  type        = bool
-  default     = false
-}
-
-variable "ecs_launch_type" {
-  description = "Launch type for ECS tasks - FARGATE or EC2 (AWS only)"
-  type        = string
-  default     = "FARGATE"
-  validation {
-    condition     = contains(["FARGATE", "EC2"], var.ecs_launch_type)
-    error_message = "ECS launch type must be either FARGATE or EC2."
-  }
-}
-
-variable "ecs_container_image" {
-  description = "Docker image for the ECS application container (AWS only)"
-  type        = string
-  default     = "nginx:latest"
-}
-
-variable "ecs_instance_type" {
-  description = "EC2 instance type for ECS container instances (only used when ecs_launch_type is EC2, AWS only)"
-  type        = string
-  default     = "t3.medium"
-}
-
-variable "ecs_key_name" {
-  description = "Name of the AWS key pair for ECS EC2 instances (optional, only used when ecs_launch_type is EC2, AWS only)"
-  type        = string
-  default     = null
-}
-
-# Additional ECS Configuration Variables
-variable "ecs_container_port" {
-  description = "Port exposed by the ECS application container (AWS only)"
-  type        = number
-  default     = 8000
-}
-
-variable "ecs_task_cpu" {
-  description = "CPU units for the ECS task (AWS only)"
-  type        = number
-  default     = 512
-}
-
-variable "ecs_task_memory" {
-  description = "Memory (MB) for the ECS task (AWS only)"
-  type        = number
-  default     = 1024
-}
-
-variable "ecs_desired_count" {
-  description = "Desired number of ECS tasks (AWS only)"
-  type        = number
-  default     = 2
-}
-
-variable "ecs_secrets_prefix" {
-  description = "Prefix for ECS secrets in AWS Secrets Manager (AWS only)"
-  type        = string
-  default     = ""
-}
-
-variable "ecs_secrets" {
-  description = "Map of secrets to store in AWS Secrets Manager for ECS (AWS only)"
-  type        = map(string)
-  default     = {}
-  sensitive   = true
-}
-
-variable "ecs_create_self_signed_cert" {
-  description = "Whether to create self-signed certificate for ECS (AWS only)"
-  type        = bool
-  default     = true
-}
-
-variable "ecs_health_check_path" {
-  description = "Health check path for ECS ALB target group (AWS only)"
-  type        = string
-  default     = "/health"
-}
-
-variable "ecs_internal_alb" {
-  description = "Whether the ECS ALB should be internal/private (AWS only)"
-  type        = bool
-  default     = false
-}
-
-variable "ecs_enable_waf" {
-  description = "Enable AWS WAF for ECS ALB (AWS only)"
-  type        = bool
-  default     = true
-}
-
-# Networking Variables
-variable "enable_nat_gateway" {
-  description = "Whether to create NAT gateways for private subnets (AWS only)"
-  type        = bool
-  default     = true
-}
-
-variable "enable_vpc_endpoints" {
-  description = "Whether to create VPC endpoints for AWS services (AWS only)"
-  type        = bool
-  default     = true
-}
-
-variable "vpc_id" {
-  description = "VPC ID to use (AWS only). If not provided, a new VPC will be created"
-  type        = string
-  default     = ""
-}
-
-variable "private_subnet_ids" {
-  description = "List of private subnet IDs (AWS only). If not provided, subnets will be created or discovered"
-  type        = list(string)
-  default     = []
-}
-
-variable "public_subnet_ids" {
-  description = "List of public subnet IDs (AWS only). If not provided, subnets will be created or discovered"
-  type        = list(string)
-  default     = []
-}
-
-variable "enable_bastion" {
-  description = "Whether to create bastion host (AWS only)"
-  type        = bool
-  default     = false
-}
-</file>
-
-<file path="modules/aws/ecs/main.tf">
-locals {
-  # Configuration map for EC2 instance types (same as EKS)
-  node_size_map = {
-    small = {
-      instance_type    = "c5.large"
-      desired_capacity = 2
-      min_size         = 1
-      max_size         = 5
-      disk_size        = 20
-    }
-    medium = {
-      instance_type    = "c5.xlarge"
-      desired_capacity = 3
-      min_size         = 2
-      max_size         = 10
-      disk_size        = 30
-    }
-    large = {
-      instance_type    = "c5.2xlarge"
-      desired_capacity = 5
-      min_size         = 3
-      max_size         = 20
-      disk_size        = 50
-    }
-  }
-
-  # Use node_size_config if no explicit values provided
-  node_config = var.launch_type == "EC2" ? local.node_size_map[var.node_size_config] : {}
-
-  # Final configuration (explicit values override node_size_config)
-  final_instance_type    = var.launch_type == "EC2" ? (var.instance_type != null ? var.instance_type : local.node_config.instance_type) : null
-  final_desired_capacity = var.launch_type == "EC2" ? (var.desired_capacity != null ? var.desired_capacity : local.node_config.desired_capacity) : null
-  final_min_size         = var.launch_type == "EC2" ? (var.min_size != null ? var.min_size : local.node_config.min_size) : null
-  final_max_size         = var.launch_type == "EC2" ? (var.max_size != null ? var.max_size : local.node_config.max_size) : null
-  final_disk_size        = var.launch_type == "EC2" ? (var.ebs_volume_size != null ? var.ebs_volume_size : local.node_config.disk_size) : null
-}
-
-# ECS Cluster
-resource "aws_ecs_cluster" "main" {
-  name = var.cluster_name
-
-  setting {
-    name  = "containerInsights"
-    value = var.enable_container_insights ? "enabled" : "disabled"
-  }
-
-  tags = var.tags
-}
-
-# ECS Cluster Capacity Providers
-resource "aws_ecs_cluster_capacity_providers" "main" {
-  cluster_name = aws_ecs_cluster.main.name
-  capacity_providers = var.launch_type == "FARGATE" ? [
-    "FARGATE", "FARGATE_SPOT"
-    ] : [
-    aws_ecs_capacity_provider.ec2[0].name
-  ]
-
-  dynamic "default_capacity_provider_strategy" {
-    for_each = var.launch_type == "FARGATE" ? [1] : []
-    content {
-      base              = 1
-      weight            = 100
-      capacity_provider = "FARGATE"
-    }
-  }
-
-  dynamic "default_capacity_provider_strategy" {
-    for_each = var.launch_type == "EC2" ? [1] : []
-    content {
-      base              = 1
-      weight            = 100
-      capacity_provider = aws_ecs_capacity_provider.ec2[0].name
-    }
-  }
-
-  depends_on = [aws_ecs_capacity_provider.ec2]
-}
-
-# CloudWatch Log Group for ECS
-resource "aws_cloudwatch_log_group" "ecs_logs" {
-  name              = "/ecs/${var.cluster_name}"
-  retention_in_days = var.log_retention_in_days
-
-  tags = var.tags
-}
-
-# Data source for latest ECS-optimized AMI
-data "aws_ami" "ecs_optimized" {
-  count       = var.launch_type == "EC2" ? 1 : 0
-  most_recent = true
-  owners      = ["amazon"]
-
-  filter {
-    name   = "name"
-    values = ["amzn2-ami-ecs-hvm-*-x86_64-ebs"]
-  }
-
-  filter {
-    name   = "virtualization-type"
-    values = ["hvm"]
-  }
-}
-
-# Security Group for ECS EC2 Instances
-resource "aws_security_group" "ecs_instances" {
-  count       = var.launch_type == "EC2" ? 1 : 0
-  name_prefix = "${var.cluster_name}-ecs-instances-"
-  vpc_id      = var.vpc_id
-
-  # Allow SSH access if key pair is provided
-  dynamic "ingress" {
-    for_each = var.key_name != null ? [1] : []
-    content {
-      from_port   = 22
-      to_port     = 22
-      protocol    = "tcp"
-      cidr_blocks = [data.aws_vpc.main.cidr_block]
-    }
-  }
-
-  # Allow traffic from ALB (will be configured via security group rules in main module)
-  ingress {
-    from_port   = var.container_port
-    to_port     = var.container_port
-    protocol    = "tcp"
-    cidr_blocks = [data.aws_vpc.main.cidr_block]
-  }
-
-  # Allow dynamic port mapping range for ALB
-  ingress {
-    from_port   = 32768
-    to_port     = 65535
-    protocol    = "tcp"
-    cidr_blocks = [data.aws_vpc.main.cidr_block]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = merge(var.tags, {
-    Name = "${var.cluster_name}-ecs-instances"
-  })
-}
-
-# IAM Role for ECS EC2 Instances
-resource "aws_iam_role" "ecs_instance_role" {
-  count       = var.launch_type == "EC2" ? 1 : 0
-  name_prefix = "${var.cluster_name}-ecs-instance-"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "ec2.amazonaws.com"
-        }
-      }
-    ]
-  })
-
-  tags = var.tags
-}
-
-# Attach AWS managed policy for ECS instance
-resource "aws_iam_role_policy_attachment" "ecs_instance_role_policy" {
-  count      = var.launch_type == "EC2" ? 1 : 0
-  role       = aws_iam_role.ecs_instance_role[0].name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
-}
-
-# IAM Instance Profile for ECS instances
-resource "aws_iam_instance_profile" "ecs_instance_profile" {
-  count       = var.launch_type == "EC2" ? 1 : 0
-  name_prefix = "${var.cluster_name}-ecs-instance-"
-  role        = aws_iam_role.ecs_instance_role[0].name
-
-  tags = var.tags
-}
-
-# Launch Template for ECS EC2 instances
-resource "aws_launch_template" "ecs_instances" {
-  count         = var.launch_type == "EC2" ? 1 : 0
-  name_prefix   = "${var.cluster_name}-ecs-"
-  image_id      = data.aws_ami.ecs_optimized[0].id
-  instance_type = local.final_instance_type
-
-  key_name = var.key_name
-
-  vpc_security_group_ids = [aws_security_group.ecs_instances[0].id]
-
-  iam_instance_profile {
-    name = aws_iam_instance_profile.ecs_instance_profile[0].name
-  }
-
-  block_device_mappings {
-    device_name = "/dev/xvda"
-    ebs {
-      volume_size           = local.final_disk_size
-      volume_type           = var.ebs_volume_type
-      encrypted             = true
-      delete_on_termination = true
-    }
-  }
-
-  monitoring {
-    enabled = true
-  }
-
-  user_data = base64encode(templatefile("${path.module}/user_data.sh", {
-    cluster_name = var.cluster_name
-  }))
-
-  tag_specifications {
-    resource_type = "instance"
-    tags = merge(var.tags, {
-      Name = "${var.cluster_name}-ecs-instance"
-    })
-  }
-
-  tags = var.tags
-}
-
-# Auto Scaling Group for ECS EC2 instances
-resource "aws_autoscaling_group" "ecs_instances" {
-  count               = var.launch_type == "EC2" ? 1 : 0
-  name                = "${var.cluster_name}-ecs-asg"
-  vpc_zone_identifier = var.private_subnet_ids
-  min_size            = local.final_min_size
-  max_size            = local.final_max_size
-  desired_capacity    = local.final_desired_capacity
-
-  launch_template {
-    id      = aws_launch_template.ecs_instances[0].id
-    version = "$Latest"
-  }
-
-  # Enable instance protection from scale in
-  protect_from_scale_in = true
-
-  tag {
-    key                 = "AmazonECSManaged"
-    value               = true
-    propagate_at_launch = false
-  }
-
-  dynamic "tag" {
-    for_each = var.tags
-    content {
-      key                 = tag.key
-      value               = tag.value
-      propagate_at_launch = true
-    }
-  }
-
-  lifecycle {
-    create_before_destroy = true
-    ignore_changes        = [desired_capacity]
-  }
-}
-
-# ECS Capacity Provider for EC2
-resource "aws_ecs_capacity_provider" "ec2" {
-  count = var.launch_type == "EC2" ? 1 : 0
-  name  = "${var.cluster_name}-ec2-capacity-provider"
-
-  auto_scaling_group_provider {
-    auto_scaling_group_arn         = aws_autoscaling_group.ecs_instances[0].arn
-    managed_termination_protection = "ENABLED"
-
-    managed_scaling {
-      maximum_scaling_step_size = 5
-      minimum_scaling_step_size = 1
-      status                    = "ENABLED"
-      target_capacity           = 100
-    }
-  }
-
-  tags = var.tags
-}
-
-# Security Group for ECS Tasks
-resource "aws_security_group" "ecs_tasks" {
-  name_prefix = "${var.cluster_name}-ecs-tasks-"
-  vpc_id      = var.vpc_id
-
-  # Allow traffic from ALB (will be configured via security group rules in main module)
-  ingress {
-    from_port   = var.container_port
-    to_port     = var.container_port
-    protocol    = "tcp"
-    cidr_blocks = [data.aws_vpc.main.cidr_block]
-  }
-
-  # Allow localhost communication for sidecar (only when enabled)
-  dynamic "ingress" {
-    for_each = var.enable_secrets_sidecar ? [1] : []
-    content {
-      from_port   = 8080
-      to_port     = 8080
-      protocol    = "tcp"
-      cidr_blocks = ["127.0.0.1/32"]
-    }
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = merge(var.tags, {
-    Name = "${var.cluster_name}-ecs-tasks"
-  })
-}
-
-# Data source for VPC CIDR
-data "aws_vpc" "main" {
-  id = var.vpc_id
-}
-
-# IAM Role for ECS Task Execution
-resource "aws_iam_role" "ecs_task_execution_role" {
-  name_prefix = "${var.cluster_name}-ecs-execution-"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "ecs-tasks.amazonaws.com"
-        }
-      }
-    ]
-  })
-
-  tags = var.tags
-}
-
-# Attach AWS managed policy for ECS task execution
-resource "aws_iam_role_policy_attachment" "ecs_task_execution_role_policy" {
-  role       = aws_iam_role.ecs_task_execution_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
-}
-
-# IAM Role for ECS Task (application runtime)
-resource "aws_iam_role" "ecs_task_role" {
-  name_prefix = "${var.cluster_name}-ecs-task-"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "ecs-tasks.amazonaws.com"
-        }
-      }
-    ]
-  })
-
-  tags = var.tags
-}
-
-# IAM Policy for Secrets Manager access
-resource "aws_iam_role_policy" "secrets_access" {
-  name_prefix = "${var.cluster_name}-secrets-access-"
-  role        = aws_iam_role.ecs_task_role.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = [
-          "secretsmanager:GetSecretValue",
-          "secretsmanager:DescribeSecret"
-        ]
-        Resource = "arn:aws:secretsmanager:${var.region}:*:secret:${var.secrets_prefix}*"
-      }
-    ]
-  })
-}
-
-# Secrets Manager Secret for application secrets
-resource "aws_secretsmanager_secret" "app_secrets" {
-  count       = length(var.secrets) > 0 ? 1 : 0
-  name        = "${var.secrets_prefix}app-secrets"
-  description = "Application secrets for ${var.cluster_name}"
-
-  tags = var.tags
-}
-
-resource "aws_secretsmanager_secret_version" "app_secrets" {
-  count         = length(var.secrets) > 0 ? 1 : 0
-  secret_id     = aws_secretsmanager_secret.app_secrets[0].id
-  secret_string = jsonencode(var.secrets)
-}
-
-# Self-signed certificate resources (when ACM certificate not provided)
-resource "tls_private_key" "self_signed" {
-  count     = var.create_self_signed_cert ? 1 : 0
-  algorithm = "RSA"
-  rsa_bits  = 2048
-}
-
-resource "tls_self_signed_cert" "self_signed" {
-  count           = var.create_self_signed_cert ? 1 : 0
-  private_key_pem = tls_private_key.self_signed[0].private_key_pem
-
-  subject {
-    common_name  = var.domain_name != null ? var.domain_name : "${var.cluster_name}.local"
-    organization = "Self-Signed Certificate"
-  }
-
-  validity_period_hours = 8760 # 1 year
-
-  allowed_uses = [
-    "key_encipherment",
-    "digital_signature",
-    "server_auth",
-  ]
-}
-
-# Upload self-signed certificate to ACM
-resource "aws_acm_certificate" "self_signed" {
-  count            = var.create_self_signed_cert ? 1 : 0
-  private_key      = tls_private_key.self_signed[0].private_key_pem
-  certificate_body = tls_self_signed_cert.self_signed[0].cert_pem
-
-  tags = var.tags
-}
-
-# Store certificate in Secrets Manager for container access
-resource "aws_secretsmanager_secret" "certificate" {
-  count       = var.create_self_signed_cert ? 1 : 0
-  name        = "${var.secrets_prefix}certificate"
-  description = "Self-signed certificate for ${var.cluster_name}"
-
-  tags = var.tags
-}
-
-resource "aws_secretsmanager_secret_version" "certificate" {
-  count     = var.create_self_signed_cert ? 1 : 0
-  secret_id = aws_secretsmanager_secret.certificate[0].id
-  secret_string = jsonencode({
-    certificate = tls_self_signed_cert.self_signed[0].cert_pem
-    private_key = tls_private_key.self_signed[0].private_key_pem
-  })
-}
-
-# ECS Task Definition
-resource "aws_ecs_task_definition" "main" {
-  family                   = var.cluster_name
-  network_mode             = var.launch_type == "FARGATE" ? "awsvpc" : "bridge"
-  requires_compatibilities = [var.launch_type]
-
-  # CPU and memory are only required for Fargate
-  cpu    = var.launch_type == "FARGATE" ? var.task_cpu : null
-  memory = var.launch_type == "FARGATE" ? var.task_memory : null
-
-  execution_role_arn = aws_iam_role.ecs_task_execution_role.arn
-  task_role_arn      = aws_iam_role.ecs_task_role.arn
-
-  container_definitions = jsonencode(concat(
-    var.enable_secrets_sidecar ? [
-      {
-        name      = "secrets-sidecar"
-        image     = var.secrets_sidecar_image
-        essential = false
-        cpu       = var.launch_type == "EC2" ? 256 : null
-        memory    = var.launch_type == "EC2" ? 512 : null
-        portMappings = [
-          {
-            containerPort = 8080
-            hostPort      = var.launch_type == "EC2" ? 0 : 8080
-            protocol      = "tcp"
-          }
-        ]
-        environment = [
-          {
-            name  = "AWS_REGION"
-            value = var.region
-          },
-          {
-            name  = "SECRETS_PREFIX"
-            value = var.secrets_prefix
-          }
-        ]
-        logConfiguration = {
-          logDriver = "awslogs"
-          options = {
-            awslogs-group         = aws_cloudwatch_log_group.ecs_logs.name
-            awslogs-region        = var.region
-            awslogs-stream-prefix = "secrets-sidecar"
-          }
-        }
-        healthCheck = {
-          command     = ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
-          interval    = 30
-          timeout     = 5
-          retries     = 3
-          startPeriod = 60
-        }
-      }
-    ] : [],
-    [
-      {
-        name      = "app"
-        image     = var.container_image
-        essential = true
-        cpu       = var.launch_type == "EC2" ? var.task_cpu : null
-        memory    = var.launch_type == "EC2" ? var.task_memory : null
-        portMappings = [
-          {
-            containerPort = var.container_port
-            hostPort      = var.launch_type == "EC2" ? 0 : var.container_port
-            protocol      = "tcp"
-          }
-        ]
-        environment = var.enable_secrets_sidecar ? concat(
-          [
-            {
-              name  = "SECRETS_ENDPOINT"
-              value = "http://localhost:8080"
-            }
-          ],
-          var.environment_variables
-        ) : var.environment_variables
-        dependsOn = var.enable_secrets_sidecar ? [
-          {
-            containerName = "secrets-sidecar"
-            condition     = "HEALTHY"
-          }
-        ] : []
-        logConfiguration = {
-          logDriver = "awslogs"
-          options = {
-            awslogs-group         = aws_cloudwatch_log_group.ecs_logs.name
-            awslogs-region        = var.region
-            awslogs-stream-prefix = "app"
-          }
-        }
-      }
-    ]
-  ))
-
-  tags = var.tags
-}
-
-# Note: ECS Service is created in the main module to avoid circular dependency with ALB
 </file>
 
 <file path="modules/aws/variables.tf">
@@ -9535,11 +8764,6 @@ variable "enable_eks" {
   default     = true
 }
 
-variable "enable_ecs" {
-  description = "Whether to create ECS cluster and services"
-  type        = bool
-  default     = false
-}
 
 variable "enable_bastion" {
   description = "Whether to create bastion host"
@@ -9670,205 +8894,249 @@ variable "log_retention_in_days" {
   default     = 7
 }
 
-# ECS Configuration Variables
-variable "ecs_container_image" {
-  description = "Docker image for the ECS application container"
-  type        = string
-  default     = "nginx:latest"
-}
-
-variable "ecs_container_port" {
-  description = "Port exposed by the ECS application container"
-  type        = number
-  default     = 8000
-}
-
-variable "ecs_secrets_sidecar_image" {
-  description = "Docker image for the secrets manager sidecar"
-  type        = string
-  default     = "secrets-sidecar:latest"
-}
-
-variable "ecs_task_cpu" {
-  description = "CPU units for the ECS task (256, 512, 1024, 2048, 4096)"
-  type        = number
-  default     = 512
-  validation {
-    condition     = contains([256, 512, 1024, 2048, 4096], var.ecs_task_cpu)
-    error_message = "ECS task CPU must be one of: 256, 512, 1024, 2048, 4096."
-  }
-}
-
-variable "ecs_task_memory" {
-  description = "Memory (MB) for the ECS task"
-  type        = number
-  default     = 1024
-}
-
-variable "ecs_desired_count" {
-  description = "Desired number of ECS tasks"
-  type        = number
-  default     = 2
-}
-
-variable "ecs_environment_variables" {
-  description = "List of environment variables for the ECS main container"
-  type = list(object({
-    name  = string
-    value = string
-  }))
-  default = []
-}
-
-variable "ecs_secrets" {
-  description = "Map of secrets to store in AWS Secrets Manager for ECS"
-  type        = map(string)
-  default     = {}
-  sensitive   = true
-}
-
-variable "ecs_secrets_prefix" {
-  description = "Prefix for ECS secrets in AWS Secrets Manager"
-  type        = string
-  default     = ""
-}
-
-variable "ecs_acm_certificate_arn" {
-  description = "ARN of existing ACM certificate for ECS ALB (if null, self-signed certificate will be created)"
-  type        = string
-  default     = null
-}
-
-variable "ecs_create_self_signed_cert" {
-  description = "Whether to create self-signed certificate for ECS when ACM certificate ARN is not provided"
-  type        = bool
-  default     = true
-}
-
-variable "ecs_domain_name" {
-  description = "Domain name for ECS self-signed certificate (defaults to cluster_name.local)"
-  type        = string
-  default     = null
-}
-
-# ALB Configuration Variables for ECS
-variable "ecs_health_check_path" {
-  description = "Health check path for ECS ALB target group"
-  type        = string
-  default     = "/health"
-}
-
-variable "ecs_internal_alb" {
-  description = "Whether the ECS ALB should be internal (private)"
-  type        = bool
-  default     = false
-}
-
-variable "ecs_allowed_cidr_blocks" {
-  description = "List of CIDR blocks allowed to access the ECS ALB"
-  type        = list(string)
-  default     = ["0.0.0.0/0"]
-}
-
-variable "ecs_ssl_policy" {
-  description = "SSL policy for ECS HTTPS listener"
-  type        = string
-  default     = "ELBSecurityPolicy-TLS-1-2-2017-01"
-}
-
-variable "ecs_enable_deletion_protection" {
-  description = "Enable deletion protection for ECS ALB"
-  type        = bool
-  default     = false
-}
-
-variable "ecs_enable_waf" {
-  description = "Enable AWS WAF for ECS ALB"
-  type        = bool
-  default     = true
-}
-
-variable "ecs_rate_limit_per_5min" {
-  description = "Rate limit per IP per 5 minutes for ECS WAF"
-  type        = number
-  default     = 2000
-}
-
-variable "ecs_enable_secrets_sidecar" {
-  description = "Whether to enable the secrets manager sidecar container for ECS"
-  type        = bool
-  default     = true
-}
-
-# ECS Launch Type Configuration
-variable "ecs_launch_type" {
-  description = "Launch type for ECS tasks (FARGATE or EC2)"
-  type        = string
-  default     = "FARGATE"
-  validation {
-    condition     = contains(["FARGATE", "EC2"], var.ecs_launch_type)
-    error_message = "ECS launch type must be either FARGATE or EC2."
-  }
-}
-
-variable "ecs_instance_type" {
-  description = "EC2 instance type for ECS container instances (only used when ecs_launch_type is EC2)"
-  type        = string
-  default     = "t3.medium"
-}
-
-variable "ecs_min_size" {
-  description = "Minimum number of EC2 instances in the Auto Scaling Group for ECS (only used when ecs_launch_type is EC2)"
-  type        = number
-  default     = 1
-}
-
-variable "ecs_max_size" {
-  description = "Maximum number of EC2 instances in the Auto Scaling Group for ECS (only used when ecs_launch_type is EC2)"
-  type        = number
-  default     = 3
-}
-
-variable "ecs_desired_capacity" {
-  description = "Desired number of EC2 instances in the Auto Scaling Group for ECS (only used when ecs_launch_type is EC2)"
-  type        = number
-  default     = 2
-}
-
-variable "ecs_key_name" {
-  description = "Name of the AWS key pair for ECS EC2 instances (optional, only used when ecs_launch_type is EC2)"
-  type        = string
-  default     = null
-}
-
-variable "ecs_enable_container_insights" {
-  description = "Enable CloudWatch Container Insights for the ECS cluster"
-  type        = bool
-  default     = true
-}
-
-variable "ecs_ec2_spot_price" {
-  description = "The maximum price per hour for ECS spot instances (only used when ecs_launch_type is EC2, leave null for on-demand)"
-  type        = string
-  default     = null
-}
-
-variable "ecs_ebs_volume_size" {
-  description = "Size of the EBS volume for ECS EC2 instances in GB (only used when ecs_launch_type is EC2)"
-  type        = number
-  default     = 30
-}
-
-variable "ecs_ebs_volume_type" {
-  description = "Type of the EBS volume for ECS EC2 instances (only used when ecs_launch_type is EC2)"
-  type        = string
-  default     = "gp3"
-}
 
 variable "tags" {
   description = "Tags to apply to resources"
   type        = map(string)
   default     = {}
+}
+</file>
+
+<file path="main.tf">
+terraform {
+  required_version = ">= 1.0"
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 6.0"
+    }
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 5.0"
+    }
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 3.0"
+    }
+  }
+}
+
+provider "aws" {
+  region = var.aws_region
+  skip_region_validation = var.cloud_provider != "aws"
+}
+
+provider "google" {
+  project = var.gcp_project_id
+  region  = var.gcp_region
+}
+
+provider "azurerm" {
+  features {
+    resource_group {
+      prevent_deletion_if_contains_resources = false
+    }
+    key_vault {
+      purge_soft_delete_on_destroy    = true
+      recover_soft_deleted_key_vaults = true
+    }
+  }
+}
+
+
+# AWS Infrastructure
+module "aws_infrastructure" {
+  source = "./modules/aws"
+  count  = var.cloud_provider == "aws" ? 1 : 0
+
+  region           = var.aws_region
+  cluster_name     = var.cluster_name
+  environment      = var.environment
+  node_size_config = var.node_size_config
+
+  # VPC Configuration
+  vpc_id               = var.vpc_id
+  private_subnet_ids   = var.private_subnet_ids
+  public_subnet_ids    = var.public_subnet_ids
+  enable_nat_gateway   = var.enable_nat_gateway
+  enable_vpc_endpoints = var.enable_vpc_endpoints
+  enable_bastion       = var.enable_bastion
+
+  tags = var.tags
+}
+
+# GCP Infrastructure
+module "gcp_infrastructure" {
+  source = "./modules/gcp"
+  count  = var.cloud_provider == "gcp" ? 1 : 0
+
+  # GCP specific variables would go here
+  # This module needs to be fully implemented
+}
+
+# Azure Infrastructure
+module "azure_infrastructure" {
+  source = "./modules/azure"
+  count  = var.cloud_provider == "azure" ? 1 : 0
+
+  cluster_name         = var.cluster_name
+  resource_group_name  = var.azure_resource_group_name
+  location            = var.azure_location
+  environment         = var.environment
+  node_size_config    = var.node_size_config
+  kubernetes_version  = var.kubernetes_version
+  
+  # Encryption
+  key_vault_key_id    = var.azure_key_vault_key_id
+  
+  # Network configuration
+  vnet_cidr           = var.azure_vnet_cidr
+  enable_nat_gateway  = var.enable_nat_gateway
+  enable_bastion      = var.enable_bastion
+  
+  tags = var.tags
+}
+</file>
+
+<file path="variables.tf">
+variable "cloud_provider" {
+  description = "Cloud provider to deploy to (azure, aws, or gcp)"
+  type        = string
+  validation {
+    condition     = contains(["azure", "aws", "gcp"], var.cloud_provider)
+    error_message = "Cloud provider must be either 'azure', 'aws', or 'gcp'."
+  }
+}
+
+variable "cluster_name" {
+  description = "Name of the Kubernetes cluster"
+  type        = string
+}
+
+variable "environment" {
+  description = "Environment name (dev, staging, prod, perf)"
+  type        = string
+}
+
+variable "resource_group_name" {
+  description = "Azure resource group name (only used for Azure)"
+  type        = string
+  default     = ""
+}
+
+variable "location" {
+  description = "Azure location (only used for Azure)"
+  type        = string
+  default     = "East US"
+}
+
+variable "aws_region" {
+  description = "AWS region (only used for AWS)"
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "node_size_config" {
+  description = "Node size configuration based on environment"
+  type        = string
+  validation {
+    condition     = contains(["small", "medium", "large"], var.node_size_config)
+    error_message = "Node size config must be one of: small, medium, large."
+  }
+}
+
+variable "tags" {
+  description = "Tags to apply to all resources"
+  type        = map(string)
+  default     = {}
+}
+
+
+# Networking Variables
+variable "enable_nat_gateway" {
+  description = "Whether to create NAT gateways for private subnets"
+  type        = bool
+  default     = true
+}
+
+variable "enable_vpc_endpoints" {
+  description = "Whether to create VPC endpoints for AWS services"
+  type        = bool
+  default     = true
+}
+
+variable "vpc_id" {
+  description = "VPC ID to use (AWS only). If not provided, a new VPC will be created"
+  type        = string
+  default     = ""
+}
+
+variable "private_subnet_ids" {
+  description = "List of private subnet IDs (AWS only). If not provided, subnets will be created or discovered"
+  type        = list(string)
+  default     = []
+}
+
+variable "public_subnet_ids" {
+  description = "List of public subnet IDs (AWS only). If not provided, subnets will be created or discovered"
+  type        = list(string)
+  default     = []
+}
+
+variable "enable_bastion" {
+  description = "Whether to create bastion host"
+  type        = bool
+  default     = false
+}
+
+# GCP specific variables
+variable "gcp_project_id" {
+  description = "GCP Project ID"
+  type        = string
+  default     = ""
+}
+
+variable "gcp_region" {
+  description = "GCP region"
+  type        = string
+  default     = "us-central1"
+}
+
+variable "gcp_database_encryption_key_name" {
+  description = "Cloud KMS key name for GKE database encryption"
+  type        = string
+  default     = null
+}
+
+# Azure specific variables
+variable "azure_resource_group_name" {
+  description = "Azure resource group name"
+  type        = string
+  default     = ""
+}
+
+variable "azure_location" {
+  description = "Azure location"
+  type        = string
+  default     = "eastus"
+}
+
+variable "azure_key_vault_key_id" {
+  description = "Azure Key Vault key ID for AKS encryption"
+  type        = string
+  default     = null
+}
+
+variable "azure_vnet_cidr" {
+  description = "Azure VNet CIDR block"
+  type        = string
+  default     = "10.0.0.0/16"
+}
+
+variable "kubernetes_version" {
+  description = "Kubernetes version for the cluster"
+  type        = string
+  default     = "1.28"
 }
 </file>
 
@@ -9961,10 +9229,10 @@ module "bastion" {
   tags = var.tags
 }
 
-# EKS Cluster Module - Completely separate from ECS
+# EKS Cluster Module
 module "eks" {
   source = "./eks"
-  count  = var.enable_eks && !var.enable_ecs ? 1 : 0 # EKS only when ECS is disabled
+  count  = var.enable_eks ? 1 : 0
 
   cluster_name              = var.cluster_name
   vpc_id                    = local.vpc_id
@@ -9983,132 +9251,6 @@ module "eks" {
   tags = var.tags
 
   depends_on = [module.vpc, module.bastion]
-}
-
-# ECS Module (creates cluster, certificates, and tasks)
-module "ecs" {
-  source = "./ecs"
-  count  = var.enable_ecs ? 1 : 0
-
-  cluster_name            = var.cluster_name
-  vpc_id                  = local.vpc_id
-  private_subnet_ids      = local.private_subnet_ids
-  region                  = var.region
-  container_image         = var.ecs_container_image
-  container_port          = var.ecs_container_port
-  secrets_sidecar_image   = var.ecs_secrets_sidecar_image
-  task_cpu                = var.ecs_task_cpu
-  task_memory             = var.ecs_task_memory
-  desired_count           = var.ecs_desired_count
-  environment_variables   = var.ecs_environment_variables
-  secrets                 = var.ecs_secrets
-  secrets_prefix          = var.ecs_secrets_prefix
-  acm_certificate_arn     = var.ecs_acm_certificate_arn
-  create_self_signed_cert = var.ecs_create_self_signed_cert
-  domain_name             = var.ecs_domain_name
-  enable_secrets_sidecar  = var.ecs_enable_secrets_sidecar
-  log_retention_in_days   = var.log_retention_in_days
-
-  # EC2 Launch Type Variables
-  launch_type               = var.ecs_launch_type
-  node_size_config          = var.node_size_config
-  instance_type             = var.ecs_instance_type
-  min_size                  = var.ecs_min_size
-  max_size                  = var.ecs_max_size
-  desired_capacity          = var.ecs_desired_capacity
-  key_name                  = var.ecs_key_name
-  enable_container_insights = var.ecs_enable_container_insights
-  ec2_spot_price            = var.ecs_ec2_spot_price
-  ebs_volume_size           = var.ecs_ebs_volume_size
-  ebs_volume_type           = var.ecs_ebs_volume_type
-
-  tags = var.tags
-
-  depends_on = [module.vpc]
-}
-
-# Application Load Balancer Module (for ECS)
-module "alb" {
-  source = "./alb"
-  count  = var.enable_ecs ? 1 : 0
-
-  cluster_name               = var.cluster_name
-  vpc_id                     = local.vpc_id
-  public_subnet_ids          = local.public_subnet_ids
-  private_subnet_ids         = local.private_subnet_ids
-  certificate_arn            = var.ecs_acm_certificate_arn != null ? var.ecs_acm_certificate_arn : module.ecs[0].certificate_arn
-  target_port                = var.ecs_container_port
-  target_type                = var.ecs_launch_type == "EC2" ? "instance" : "ip"
-  health_check_path          = var.ecs_health_check_path
-  internal_alb               = var.ecs_internal_alb
-  allowed_cidr_blocks        = var.ecs_allowed_cidr_blocks
-  ssl_policy                 = var.ecs_ssl_policy
-  enable_deletion_protection = var.ecs_enable_deletion_protection
-  enable_waf                 = var.ecs_enable_waf
-  rate_limit_per_5min        = var.ecs_rate_limit_per_5min
-
-  tags = var.tags
-
-  depends_on = [module.vpc, module.ecs]
-}
-
-# Security Group Rule: Allow ALB to access ECS tasks
-resource "aws_security_group_rule" "alb_to_ecs" {
-  count                    = var.enable_ecs ? 1 : 0
-  type                     = "ingress"
-  from_port                = var.ecs_container_port
-  to_port                  = var.ecs_container_port
-  protocol                 = "tcp"
-  source_security_group_id = module.alb[0].security_group_id
-  security_group_id        = module.ecs[0].security_group_id
-
-  depends_on = [module.ecs, module.alb]
-}
-
-# Update ECS service with ALB target group (separate resource to avoid circular dependency)
-resource "aws_ecs_service" "main_with_alb" {
-  count           = var.enable_ecs ? 1 : 0
-  name            = "${var.cluster_name}-with-alb"
-  cluster         = module.ecs[0].cluster_id
-  task_definition = module.ecs[0].task_definition_arn
-  desired_count   = var.ecs_desired_count
-  
-  # Use launch_type only for Fargate
-  launch_type = var.ecs_launch_type == "FARGATE" ? "FARGATE" : null
-
-  # Use capacity provider strategy for EC2
-  dynamic "capacity_provider_strategy" {
-    for_each = var.ecs_launch_type == "EC2" ? [1] : []
-    content {
-      capacity_provider = module.ecs[0].capacity_provider_name
-      weight            = 100
-      base              = 1
-    }
-  }
-
-  # Network configuration - only for Fargate launch type
-  dynamic "network_configuration" {
-    for_each = var.ecs_launch_type == "FARGATE" ? [1] : []
-    content {
-      security_groups  = [module.ecs[0].security_group_id]
-      subnets          = local.private_subnet_ids
-      assign_public_ip = false
-    }
-  }
-
-  load_balancer {
-    target_group_arn = module.alb[0].target_group_arn
-    container_name   = "app"
-    container_port   = var.ecs_container_port
-  }
-
-  depends_on = [module.ecs, module.alb, aws_security_group_rule.alb_to_ecs]
-
-  tags = var.tags
-
-  lifecycle {
-    ignore_changes = [task_definition]
-  }
 }
 </file>
 

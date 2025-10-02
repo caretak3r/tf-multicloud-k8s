@@ -18,10 +18,28 @@ variable "environment" {
   type        = string
 }
 
+variable "create_vpc" {
+  description = "Whether to create a new VNet or use existing one"
+  type        = bool
+  default     = true
+}
+
+variable "vpc_id" {
+  description = "ID of existing VNet (required when create_vpc = false)"
+  type        = string
+  default     = ""
+}
+
+variable "subnet_id" {
+  description = "ID of existing subnet for AKS (required when create_vpc = false)"
+  type        = string
+  default     = ""
+}
+
 variable "kubernetes_version" {
   description = "Kubernetes version"
   type        = string
-  default     = "1.28"
+  default     = "1.32"
 }
 
 variable "node_size_config" {

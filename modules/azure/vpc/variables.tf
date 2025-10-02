@@ -3,6 +3,24 @@ variable "resource_group_name" {
   type        = string
 }
 
+variable "create_vpc" {
+  description = "Whether to create a new VNet or use existing one"
+  type        = bool
+  default     = true
+}
+
+variable "vpc_id" {
+  description = "ID of existing VNet (required when create_vpc = false)"
+  type        = string
+  default     = ""
+}
+
+variable "subnet_id" {
+  description = "ID of existing subnet for AKS (required when create_vpc = false)"
+  type        = string
+  default     = ""
+}
+
 variable "location" {
   description = "Azure region"
   type        = string

@@ -16,7 +16,7 @@ variable "location" {
 variable "kubernetes_version" {
   description = "Kubernetes version"
   type        = string
-  default     = "1.28"
+  default     = "1.32"
 }
 
 variable "node_size_config" {
