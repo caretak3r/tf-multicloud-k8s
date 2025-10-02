@@ -8,7 +8,7 @@ variable "cloud_provider" {
 }
 
 variable "cluster_name" {
-  description = "Name of the cluster (Kubernetes EKS or ECS)"
+  description = "Name of the Kubernetes cluster"
   type        = string
 }
 
@@ -50,102 +50,6 @@ variable "tags" {
   default     = {}
 }
 
-# ECS Configuration Variables (AWS only)
-variable "enable_ecs" {
-  description = "Whether to create ECS cluster and services (AWS only)"
-  type        = bool
-  default     = false
-}
-
-variable "ecs_launch_type" {
-  description = "Launch type for ECS tasks - FARGATE or EC2 (AWS only)"
-  type        = string
-  default     = "FARGATE"
-  validation {
-    condition     = contains(["FARGATE", "EC2"], var.ecs_launch_type)
-    error_message = "ECS launch type must be either FARGATE or EC2."
-  }
-}
-
-variable "ecs_container_image" {
-  description = "Docker image for the ECS application container (AWS only)"
-  type        = string
-  default     = "nginx:latest"
-}
-
-variable "ecs_instance_type" {
-  description = "EC2 instance type for ECS container instances (only used when ecs_launch_type is EC2, AWS only)"
-  type        = string
-  default     = "t3.medium"
-}
-
-variable "ecs_key_name" {
-  description = "Name of the AWS key pair for ECS EC2 instances (optional, only used when ecs_launch_type is EC2, AWS only)"
-  type        = string
-  default     = null
-}
-
-# Additional ECS Configuration Variables
-variable "ecs_container_port" {
-  description = "Port exposed by the ECS application container (AWS only)"
-  type        = number
-  default     = 8000
-}
-
-variable "ecs_task_cpu" {
-  description = "CPU units for the ECS task (AWS only)"
-  type        = number
-  default     = 512
-}
-
-variable "ecs_task_memory" {
-  description = "Memory (MB) for the ECS task (AWS only)"
-  type        = number
-  default     = 1024
-}
-
-variable "ecs_desired_count" {
-  description = "Desired number of ECS tasks (AWS only)"
-  type        = number
-  default     = 2
-}
-
-variable "ecs_secrets_prefix" {
-  description = "Prefix for ECS secrets in AWS Secrets Manager (AWS only)"
-  type        = string
-  default     = ""
-}
-
-variable "ecs_secrets" {
-  description = "Map of secrets to store in AWS Secrets Manager for ECS (AWS only)"
-  type        = map(string)
-  default     = {}
-  sensitive   = true
-}
-
-variable "ecs_create_self_signed_cert" {
-  description = "Whether to create self-signed certificate for ECS (AWS only)"
-  type        = bool
-  default     = true
-}
-
-variable "ecs_health_check_path" {
-  description = "Health check path for ECS ALB target group (AWS only)"
-  type        = string
-  default     = "/health"
-}
-
-variable "ecs_internal_alb" {
-  description = "Whether the ECS ALB should be internal/private (AWS only)"
-  type        = bool
-  default     = false
-}
-
-variable "ecs_enable_waf" {
-  description = "Enable AWS WAF for ECS ALB (AWS only)"
-  type        = bool
-  default     = true
-}
 
 # Networking Variables
 variable "enable_nat_gateway" {
