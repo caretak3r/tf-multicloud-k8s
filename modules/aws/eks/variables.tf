@@ -91,6 +91,12 @@ variable "addon_versions" {
   default = {}
 }
 
+variable "kms_key_arn" {
+  description = "ARN of existing KMS key for EKS cluster encryption. If not provided, a new key will be created."
+  type        = string
+  default     = null
+}
+
 variable "tags" {
   description = "Tags to apply to resources"
   type        = map(string)

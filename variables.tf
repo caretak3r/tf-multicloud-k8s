@@ -1,9 +1,9 @@
 variable "cloud_provider" {
-  description = "Cloud provider to deploy to (azure or aws)"
+  description = "Cloud provider to deploy to (azure, aws, or gcp)"
   type        = string
   validation {
-    condition     = contains(["azure", "aws"], var.cloud_provider)
-    error_message = "Cloud provider must be either 'azure' or 'aws'."
+    condition     = contains(["azure", "aws", "gcp"], var.cloud_provider)
+    error_message = "Cloud provider must be either 'azure', 'aws', or 'gcp'."
   }
 }
 
@@ -149,13 +149,13 @@ variable "ecs_enable_waf" {
 
 # Networking Variables
 variable "enable_nat_gateway" {
-  description = "Whether to create NAT gateways for private subnets (AWS only)"
+  description = "Whether to create NAT gateways for private subnets"
   type        = bool
   default     = true
 }
 
 variable "enable_vpc_endpoints" {
-  description = "Whether to create VPC endpoints for AWS services (AWS only)"
+  description = "Whether to create VPC endpoints for AWS services"
   type        = bool
   default     = true
 }
@@ -179,7 +179,57 @@ variable "public_subnet_ids" {
 }
 
 variable "enable_bastion" {
-  description = "Whether to create bastion host (AWS only)"
+  description = "Whether to create bastion host"
   type        = bool
   default     = false
+}
+
+# GCP specific variables
+variable "gcp_project_id" {
+  description = "GCP Project ID"
+  type        = string
+  default     = ""
+}
+
+variable "gcp_region" {
+  description = "GCP region"
+  type        = string
+  default     = "us-central1"
+}
+
+variable "gcp_database_encryption_key_name" {
+  description = "Cloud KMS key name for GKE database encryption"
+  type        = string
+  default     = null
+}
+
+# Azure specific variables
+variable "azure_resource_group_name" {
+  description = "Azure resource group name"
+  type        = string
+  default     = ""
+}
+
+variable "azure_location" {
+  description = "Azure location"
+  type        = string
+  default     = "eastus"
+}
+
+variable "azure_key_vault_key_id" {
+  description = "Azure Key Vault key ID for AKS encryption"
+  type        = string
+  default     = null
+}
+
+variable "azure_vnet_cidr" {
+  description = "Azure VNet CIDR block"
+  type        = string
+  default     = "10.0.0.0/16"
+}
+
+variable "kubernetes_version" {
+  description = "Kubernetes version for the cluster"
+  type        = string
+  default     = "1.28"
 }

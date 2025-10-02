@@ -188,8 +188,9 @@ resource "aws_iam_role_policy_attachment" "nodes_AmazonEC2ContainerRegistryReadO
   role       = aws_iam_role.nodes.name
 }
 
-# KMS key for EKS cluster encryption
+# KMS key for EKS cluster encryption - create only if not provided
 resource "aws_kms_key" "cluster" {
+  count       = var.kms_key_arn == null ? 1 : 0
   description = "EKS Secret Encryption Key for ${var.cluster_name}"
 
   policy = jsonencode({
@@ -223,15 +224,21 @@ resource "aws_kms_key" "cluster" {
 }
 
 resource "aws_kms_alias" "cluster" {
+  count         = var.kms_key_arn == null ? 1 : 0
   name          = "alias/eks-${var.cluster_name}"
-  target_key_id = aws_kms_key.cluster.key_id
+  target_key_id = aws_kms_key.cluster[0].key_id
+}
+
+# Local to determine which KMS key to use
+locals {
+  kms_key_arn = var.kms_key_arn != null ? var.kms_key_arn : aws_kms_key.cluster[0].arn
 }
 
 # CloudWatch log group for EKS cluster
 resource "aws_cloudwatch_log_group" "cluster" {
   name              = "/aws/eks/${var.cluster_name}/cluster"
   retention_in_days = var.log_retention_in_days
-  kms_key_id        = aws_kms_key.cluster.arn
+  kms_key_id        = local.kms_key_arn
 
   tags = var.tags
 }
@@ -253,7 +260,7 @@ resource "aws_eks_cluster" "main" {
 
   encryption_config {
     provider {
-      key_arn = aws_kms_key.cluster.arn
+      key_arn = local.kms_key_arn
     }
     resources = ["secrets"]
   }

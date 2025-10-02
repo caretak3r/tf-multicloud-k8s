@@ -150,6 +150,12 @@ variable "tags" {
   default     = {}
 }
 
+variable "database_encryption_key_name" {
+  description = "The Cloud KMS key name to use for cluster database encryption. Format: projects/PROJECT_ID/locations/LOCATION/keyRings/RING_NAME/cryptoKeys/KEY_NAME. If not provided, a new key will be created."
+  type        = string
+  default     = null
+}
+
 variable "labels" {
   description = "A map of labels to apply to all resources"
   type        = map(string)
