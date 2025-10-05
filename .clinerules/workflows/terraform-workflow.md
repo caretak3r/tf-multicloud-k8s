@@ -1,0 +1,2 @@
+1. ensure you always run `terraform fmt -recursive` after making changes to .tf or .tfvars files
+2. when you need to read code from external or internal codebases or chunks of them, always try to leverage repomix and use that file as context for the next set of tokens
