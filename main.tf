@@ -17,7 +17,7 @@ terraform {
 }
 
 provider "aws" {
-  region = var.aws_region
+  region                 = var.aws_region
   skip_region_validation = var.cloud_provider != "aws"
 }
 
@@ -74,20 +74,20 @@ module "azure_infrastructure" {
   source = "./modules/azure"
   count  = var.cloud_provider == "azure" ? 1 : 0
 
-  cluster_name         = var.cluster_name
-  resource_group_name  = var.azure_resource_group_name
+  cluster_name        = var.cluster_name
+  resource_group_name = var.azure_resource_group_name
   location            = var.azure_location
   environment         = var.environment
   node_size_config    = var.node_size_config
   kubernetes_version  = var.kubernetes_version
-  
+
   # Encryption
-  key_vault_key_id    = var.azure_key_vault_key_id
-  
+  key_vault_key_id = var.azure_key_vault_key_id
+
   # Network configuration
-  vnet_cidr           = var.azure_vnet_cidr
-  enable_nat_gateway  = var.enable_nat_gateway
-  enable_bastion      = var.enable_bastion
-  
+  vnet_cidr          = var.azure_vnet_cidr
+  enable_nat_gateway = var.enable_nat_gateway
+  enable_bastion     = var.enable_bastion
+
   tags = var.tags
 }
