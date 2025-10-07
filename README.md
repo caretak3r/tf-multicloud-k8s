@@ -36,7 +36,7 @@ This repository provides a secure, production-ready Terraform template for deplo
    ```bash
    # For Azure
    az aks get-credentials --resource-group <rg-name> --name <cluster-name>
-   
+
    # For AWS
    aws eks update-kubeconfig --region <region> --name <cluster-name>
    ```

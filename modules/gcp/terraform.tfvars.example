@@ -1,0 +1,47 @@
+# Example variables for the GCP module.
+#
+# When using this module as a standalone component, you would typically create a
+# `main.tf` file in this directory to call the `vpc` and `gke` sub-modules.
+# This file provides example variables for that purpose.
+#
+# You can copy this file to `terraform.tfvars` and edit the values.
+
+# --- General ---
+
+# IMPORTANT: You must replace this with your actual GCP Project ID.
+project_id = "your-gcp-project-id"
+
+# The GCP region to deploy resources in.
+region = "us-central1"
+
+# A prefix used for naming resources, like the VPC network.
+name_prefix = "my-gcp-project"
+
+# --- Networking (VPC Module) ---
+
+# CIDR block for the new VPC. A new VPC is created by default.
+vpc_cidr = "10.2.0.0/16"
+
+# --- GKE Cluster (GKE Module) ---
+
+# A name for the GKE cluster.
+cluster_name = "my-gke-cluster"
+
+# The size of the worker nodes. Options: "small", "medium", "large".
+node_size_config = "medium"
+
+# The Kubernetes version for the GKE cluster.
+kubernetes_version = "1.32"
+
+# The GKE release channel.
+release_channel = "REGULAR"
+
+# --- Labels ---
+
+# Custom labels to apply to all resources.
+labels = {
+  Environment = "dev"
+  Project     = "kubernetes-cluster"
+  Team        = "devops"
+  Owner       = "your-team@company.com"
+}

@@ -8,11 +8,6 @@ variable "cluster_name" {
   type        = string
 }
 
-variable "environment" {
-  description = "Environment name"
-  type        = string
-}
-
 # VPC and Networking Variables
 variable "vpc_id" {
   description = "VPC ID to use. If not provided, a new VPC will be created"

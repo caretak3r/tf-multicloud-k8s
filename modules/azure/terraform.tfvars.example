@@ -1,0 +1,42 @@
+# Example variables for the Azure module.
+#
+# When using this module as a standalone component, you can copy this file
+# to `terraform.tfvars` and edit the values to match your configuration.
+
+# --- General ---
+
+# The Azure region to deploy resources in.
+location = "eastus"
+
+# The name of the resource group that will contain all resources.
+resource_group_name = "my-aks-rg"
+
+# A name for the AKS cluster.
+cluster_name = "my-aks-cluster"
+
+# The environment name, used for tagging resources.
+environment = "development"
+
+# --- Networking ---
+
+# CIDR block for the new Virtual Network (VNet). A new VNet is created by default.
+# To use an existing VNet, you would set `create_vpc = false` and provide the `vpc_id` and `subnet_id`.
+vnet_cidr = "10.1.0.0/16"
+
+# --- AKS Cluster ---
+
+# The size of the worker nodes. Options: "small", "medium", "large".
+node_size_config = "medium"
+
+# The Kubernetes version for the AKS cluster.
+kubernetes_version = "1.32"
+
+# --- Tags ---
+
+# Custom tags to apply to all resources.
+tags = {
+  Environment = "dev"
+  Project     = "kubernetes-cluster"
+  Team        = "devops"
+  Owner       = "your-team@company.com"
+}

@@ -9,8 +9,8 @@ resource "google_compute_network" "vpc" {
   count = var.create_vpc ? 1 : 0
 
   name                            = "${var.name_prefix}-vpc"
-  auto_create_subnetworks        = false
-  enable_ula_internal_ipv6      = false
+  auto_create_subnetworks         = false
+  enable_ula_internal_ipv6        = false
   delete_default_routes_on_create = false
 
   description = "VPC network for ${var.name_prefix}"
@@ -82,7 +82,7 @@ resource "google_compute_router_nat" "nat" {
   name                               = "${var.name_prefix}-nat-${var.regions[count.index]}"
   router                             = google_compute_router.nat_router[count.index].name
   region                             = var.regions[count.index]
-  nat_ip_allocate_option            = "AUTO_ONLY"
+  nat_ip_allocate_option             = "AUTO_ONLY"
   source_subnetwork_ip_ranges_to_nat = "LIST_OF_SUBNETWORKS"
 
   subnetwork {

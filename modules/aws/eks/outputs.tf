@@ -71,5 +71,5 @@ output "kubeconfig_command" {
 
 output "kms_key_arn" {
   description = "ARN of the KMS key used for EKS cluster encryption"
-  value       = aws_kms_key.cluster.arn
+  value       = local.kms_key_arn
 }

@@ -39,10 +39,10 @@ resource "azurerm_subnet" "aks" {
   resource_group_name  = var.resource_group_name
   virtual_network_name = azurerm_virtual_network.main[0].name
   address_prefixes     = [var.aks_subnet_cidr]
-  
+
   # Disable private endpoint network policies for AKS
   private_endpoint_network_policies = "Disabled"
-  
+
   # Service endpoints for secure access to Azure services
   service_endpoints = [
     "Microsoft.Storage",
@@ -59,7 +59,7 @@ resource "azurerm_subnet" "private" {
   resource_group_name  = var.resource_group_name
   virtual_network_name = azurerm_virtual_network.main[0].name
   address_prefixes     = [var.private_subnet_cidr]
-  
+
   service_endpoints = [
     "Microsoft.Storage",
     "Microsoft.KeyVault",

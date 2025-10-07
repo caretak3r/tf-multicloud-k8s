@@ -1,0 +1,45 @@
+# Example variables for the AWS module.
+#
+# When using this module as a standalone component, you can copy this file
+# to `terraform.tfvars` and edit the values to match your configuration.
+
+# --- General ---
+
+# The AWS region to deploy resources in.
+region = "us-west-2"
+
+# A name for the EKS cluster.
+cluster_name = "my-eks-cluster"
+
+# The environment name, used for tagging resources.
+environment = "development"
+
+# --- Networking ---
+
+# CIDR block for the new VPC. A new VPC is created by default.
+# To use an existing VPC, you would set `vpc_id` and the subnet IDs instead.
+vpc_cidr = "10.0.0.0/16"
+
+# The number of Availability Zones to use in the VPC.
+availability_zones_count = 2
+
+# --- EKS Cluster ---
+
+# The size of the worker nodes. Options: "small", "medium", "large".
+node_size_config = "medium"
+
+# The Kubernetes version for the EKS cluster.
+kubernetes_version = "1.32"
+
+# (Optional) The name of an EC2 key pair to allow SSH access to the worker nodes.
+# node_ssh_key_name = "my-ec2-key-pair"
+
+# --- Tags ---
+
+# Custom tags to apply to all resources.
+tags = {
+  Environment = "dev"
+  Project     = "kubernetes-cluster"
+  Team        = "devops"
+  Owner       = "your-team@company.com"
+}

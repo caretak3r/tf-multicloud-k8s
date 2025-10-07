@@ -70,12 +70,6 @@ variable "key_vault_key_id" {
   default     = null
 }
 
-variable "enable_host_encryption" {
-  description = "Enable host encryption for nodes"
-  type        = bool
-  default     = true
-}
-
 variable "enable_azure_policy" {
   description = "Enable Azure Policy for AKS"
   type        = bool

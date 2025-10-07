@@ -61,7 +61,7 @@ locals {
     var.vpc_id != "" ? data.aws_subnets.existing_private[0].ids : module.vpc[0].private_subnet_ids
   )
 
-  # Public subnets: use provided, discover from tags, or create new  
+  # Public subnets: use provided, discover from tags, or create new
   public_subnet_ids = length(var.public_subnet_ids) > 0 ? var.public_subnet_ids : (
     var.vpc_id != "" ? data.aws_subnets.existing_public[0].ids : module.vpc[0].public_subnet_ids
   )
@@ -109,4 +109,3 @@ module "eks" {
 
   depends_on = [module.vpc, module.bastion]
 }
-

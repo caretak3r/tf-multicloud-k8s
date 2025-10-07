@@ -1,29 +1,33 @@
 locals {
   node_size_map = {
     small = {
-      vm_size            = "Standard_D2s_v3"  # 2 vCPU, 8 GB
-      node_count         = 2
-      min_count          = 1
-      max_count          = 5
-      os_disk_size_gb    = 50
+      vm_size         = "Standard_D2s_v3" # 2 vCPU, 8 GB
+      node_count      = 2
+      min_count       = 1
+      max_count       = 5
+      os_disk_size_gb = 50
     }
     medium = {
-      vm_size            = "Standard_D4s_v3"  # 4 vCPU, 16 GB
-      node_count         = 3
-      min_count          = 2
-      max_count          = 10
-      os_disk_size_gb    = 100
+      vm_size         = "Standard_D4s_v3" # 4 vCPU, 16 GB
+      node_count      = 3
+      min_count       = 2
+      max_count       = 10
+      os_disk_size_gb = 100
     }
     large = {
-      vm_size            = "Standard_D8s_v3"  # 8 vCPU, 32 GB
-      node_count         = 5
-      min_count          = 3
-      max_count          = 20
-      os_disk_size_gb    = 100
+      vm_size         = "Standard_D8s_v3" # 8 vCPU, 32 GB
+      node_count      = 5
+      min_count       = 3
+      max_count       = 20
+      os_disk_size_gb = 100
     }
   }
 
   node_config = local.node_size_map[var.node_size_config]
+
+  workload_node_taints_list = [
+    for taint in var.workload_node_taints : "${taint.key}=${taint.value}:${taint.effect}"
+  ]
 }
 
 # Create Key Vault for encryption if not provided
@@ -36,7 +40,7 @@ resource "azurerm_key_vault" "aks" {
   tenant_id                   = data.azurerm_client_config.current.tenant_id
   soft_delete_retention_days  = 7
   purge_protection_enabled    = true
-  sku_name                   = "standard"
+  sku_name                    = "standard"
 
   access_policy {
     tenant_id = data.azurerm_client_config.current.tenant_id
@@ -144,36 +148,32 @@ resource "azurerm_kubernetes_cluster" "main" {
 
   # Network configuration
   network_profile {
-    network_plugin     = var.network_plugin
-    network_policy     = var.network_policy
-    dns_service_ip     = var.dns_service_ip
-    service_cidr       = var.service_cidr
-    load_balancer_sku  = "standard"
-    outbound_type      = "userDefinedRouting"  # For private clusters
+    network_plugin    = var.network_plugin
+    network_policy    = var.network_policy
+    dns_service_ip    = var.dns_service_ip
+    service_cidr      = var.service_cidr
+    load_balancer_sku = "standard"
+    outbound_type     = "userDefinedRouting" # For private clusters
   }
 
   default_node_pool {
     name                         = "system"
     node_count                   = local.node_config.node_count
     vm_size                      = local.node_config.vm_size
-    os_disk_size_gb             = local.node_config.os_disk_size_gb
-    vnet_subnet_id              = var.subnet_id
-    type                        = "VirtualMachineScaleSets"
-    enable_auto_scaling         = true
-    min_count                   = local.node_config.min_count
-    max_count                   = local.node_config.max_count
-    enable_host_encryption      = var.enable_host_encryption
+    os_disk_size_gb              = local.node_config.os_disk_size_gb
+    vnet_subnet_id               = var.subnet_id
+    type                         = "VirtualMachineScaleSets"
     only_critical_addons_enabled = true
-    
+
     upgrade_settings {
       max_surge = "10%"
     }
 
     node_labels = {
-      "nodepool-type"    = "system"
-      "environment"      = var.environment
-      "nodepoolos"       = "linux"
-      "app"              = "system-apps"
+      "nodepool-type" = "system"
+      "environment"   = var.environment
+      "nodepoolos"    = "linux"
+      "app"           = "system-apps"
     }
 
     tags = var.tags
@@ -202,7 +202,7 @@ resource "azurerm_kubernetes_cluster" "main" {
   # Auto-scaler profile
   auto_scaler_profile {
     balance_similar_node_groups      = true
-    expander                          = "random"
+    expander                         = "random"
     max_graceful_termination_sec     = 600
     max_node_provisioning_time       = "15m"
     max_unready_nodes                = 3
@@ -224,7 +224,7 @@ resource "azurerm_kubernetes_cluster" "main" {
       hours = [1, 4]
     }
     allowed {
-      day   = "Sunday"  
+      day   = "Sunday"
       hours = [1, 4]
     }
   }
@@ -236,22 +236,20 @@ resource "azurerm_kubernetes_cluster" "main" {
 resource "azurerm_kubernetes_cluster_node_pool" "workload" {
   name                  = "workload"
   kubernetes_cluster_id = azurerm_kubernetes_cluster.main.id
-  vm_size              = local.node_config.vm_size
-  node_count           = local.node_config.node_count
-  vnet_subnet_id       = var.subnet_id
-  
-  enable_auto_scaling    = true
-  min_count             = local.node_config.min_count
-  max_count             = local.node_config.max_count
-  enable_host_encryption = var.enable_host_encryption
-  os_disk_size_gb       = local.node_config.os_disk_size_gb
+  vm_size               = local.node_config.vm_size
+  node_count            = local.node_config.node_count
+  vnet_subnet_id        = var.subnet_id
+
+  min_count       = local.node_config.min_count
+  max_count       = local.node_config.max_count
+  os_disk_size_gb = local.node_config.os_disk_size_gb
 
   node_labels = {
     "nodepool-type" = "workload"
     "environment"   = var.environment
   }
 
-  node_taints = var.workload_node_taints
+  node_taints = local.workload_node_taints_list
 
   upgrade_settings {
     max_surge = "10%"

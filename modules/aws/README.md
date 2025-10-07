@@ -47,24 +47,24 @@ modules/aws/
 ```hcl
 module "aws_infrastructure" {
   source = "./modules/aws"
-  
+
   cluster_name  = "my-secure-eks"
   region        = "us-west-2"
   environment   = "production"
-  
+
   # Enable all components
   create_vpc     = true
   enable_eks     = true
   enable_bastion = true
-  
+
   # Bastion configuration
   bastion_key_name                = "my-keypair"
   bastion_allowed_ssh_cidr_blocks = ["203.0.113.0/24"]
-  
+
   # EKS configuration
   node_size_config = "medium"
   node_ssh_key_name = "my-keypair"
-  
+
   tags = {
     Environment = "production"
     Project     = "secure-platform"
@@ -76,19 +76,19 @@ module "aws_infrastructure" {
 ```hcl
 module "aws_infrastructure" {
   source = "./modules/aws"
-  
+
   cluster_name    = "my-eks"
   region          = "us-west-2"
   environment     = "production"
-  
+
   # Use existing VPC
   create_vpc      = false
   existing_vpc_id = "vpc-0123456789abcdef0"
-  
+
   # Enable only EKS
   enable_eks     = true
   enable_bastion = false
-  
+
   node_size_config = "large"
 }
 ```
@@ -97,26 +97,26 @@ module "aws_infrastructure" {
 ```hcl
 module "aws_infrastructure" {
   source = "./modules/aws"
-  
+
   cluster_name = "my-ecs-app"
   region       = "us-west-2"
   environment  = "production"
-  
+
   # Enable ECS (disable EKS)
   enable_eks = false
   enable_ecs = true
-  
+
   # Container configuration
   ecs_container_image = "my-app:latest"
   ecs_container_port  = 8000
   ecs_desired_count   = 3
-  
+
   # Secrets configuration
   ecs_secrets = {
     database_url = "postgresql://..."
     api_key     = "secret-key"
   }
-  
+
   # Use self-signed certificate (or provide ACM ARN)
   ecs_create_self_signed_cert = true
   ecs_domain_name            = "myapp.example.com"
@@ -127,19 +127,43 @@ module "aws_infrastructure" {
 ```hcl
 module "aws_infrastructure" {
   source = "./modules/aws"
-  
+
   cluster_name = "network-foundation"
   region       = "us-west-2"
   environment  = "shared"
-  
+
   # Create VPC only
   create_vpc     = true
   enable_eks     = false
   enable_ecs     = false
   enable_bastion = false
-  
+
   vpc_cidr                 = "10.0.0.0/16"
   availability_zones_count = 3
+}
+```
+
+## Remote State Backend
+
+By default, when running this module directly, Terraform will store its state in a local file named `terraform.tfstate`. To use a remote backend for state storage (recommended for any collaborative or production environment), you can configure an S3 backend.
+
+A sample backend configuration is provided in `backend.tf`. To enable it:
+
+1.  **Uncomment the code** in the `modules/aws/backend.tf` file.
+2.  **Fill in the placeholder values** for `bucket` and `dynamodb_table`.
+3.  **Run `terraform init`** from within the `modules/aws/` directory. Terraform will prompt you to migrate your state to the new backend.
+
+```hcl
+# modules/aws/backend.tf
+
+terraform {
+  backend "s3" {
+    bucket         = "your-terraform-state-bucket-name"  # <-- Replace with your S3 bucket name
+    key            = "aws-module/terraform.tfstate"
+    region         = "us-east-1"
+    encrypt        = true
+    dynamodb_table = "your-terraform-state-lock-table" # <-- Replace with your DynamoDB table name
+  }
 }
 ```
 
@@ -191,7 +215,7 @@ module "aws_infrastructure" {
 - `cluster_name`: EKS cluster name
 - `kubeconfig_command`: Command to configure kubectl
 
-### ECS Outputs  
+### ECS Outputs
 - `ecs_cluster_id`: ECS cluster ID
 - `alb_dns_name`: ALB DNS name for accessing application
 - `ecs_certificate_arn`: Certificate ARN (provided or self-signed)

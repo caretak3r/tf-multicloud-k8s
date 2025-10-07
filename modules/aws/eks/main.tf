@@ -148,7 +148,7 @@ resource "aws_iam_role" "cluster" {
   tags = var.tags
 }
 
-resource "aws_iam_role_policy_attachment" "cluster_AmazonEKSClusterPolicy" {
+resource "aws_iam_role_policy_attachment" "cluster_amazon_eks_cluster_policy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
   role       = aws_iam_role.cluster.name
 }
@@ -173,17 +173,17 @@ resource "aws_iam_role" "nodes" {
   tags = var.tags
 }
 
-resource "aws_iam_role_policy_attachment" "nodes_AmazonEKSWorkerNodePolicy" {
+resource "aws_iam_role_policy_attachment" "nodes_amazon_eks_worker_node_policy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
   role       = aws_iam_role.nodes.name
 }
 
-resource "aws_iam_role_policy_attachment" "nodes_AmazonEKS_CNI_Policy" {
+resource "aws_iam_role_policy_attachment" "nodes_amazon_eks_cni_policy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
   role       = aws_iam_role.nodes.name
 }
 
-resource "aws_iam_role_policy_attachment" "nodes_AmazonEC2ContainerRegistryReadOnly" {
+resource "aws_iam_role_policy_attachment" "nodes_amazon_ec2_container_registry_read_only" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
   role       = aws_iam_role.nodes.name
 }
@@ -268,7 +268,7 @@ resource "aws_eks_cluster" "main" {
   tags = var.tags
 
   depends_on = [
-    aws_iam_role_policy_attachment.cluster_AmazonEKSClusterPolicy,
+    aws_iam_role_policy_attachment.cluster_amazon_eks_cluster_policy,
     aws_cloudwatch_log_group.cluster,
   ]
 }
@@ -306,9 +306,9 @@ resource "aws_eks_node_group" "main" {
   tags = var.tags
 
   depends_on = [
-    aws_iam_role_policy_attachment.nodes_AmazonEKSWorkerNodePolicy,
-    aws_iam_role_policy_attachment.nodes_AmazonEKS_CNI_Policy,
-    aws_iam_role_policy_attachment.nodes_AmazonEC2ContainerRegistryReadOnly,
+    aws_iam_role_policy_attachment.nodes_amazon_eks_worker_node_policy,
+    aws_iam_role_policy_attachment.nodes_amazon_eks_cni_policy,
+    aws_iam_role_policy_attachment.nodes_amazon_ec2_container_registry_read_only,
   ]
 }
 
