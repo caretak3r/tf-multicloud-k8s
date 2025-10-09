@@ -33,6 +33,10 @@ capacity_type = "ON_DEMAND" # Options: ON_DEMAND, SPOT
 # Security
 node_ssh_key_name = "" # Optional: EC2 key pair name for SSH access
 
+# Encryption (REQUIRED)
+# You must provide a KMS key ARN for EKS cluster encryption
+kms_key_arn = "arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012" # Replace with your KMS key ARN
+
 # Monitoring
 enabled_cluster_log_types = [
   "api",

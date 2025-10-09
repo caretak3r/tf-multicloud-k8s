@@ -63,8 +63,9 @@ monitoring_enabled_components = ["SYSTEM_COMPONENTS"]
 enable_vertical_pod_autoscaling   = true
 enable_horizontal_pod_autoscaling = true
 
-# Encryption (optional)
-database_encryption_key_name = null # Format: projects/PROJECT_ID/locations/LOCATION/keyRings/RING_NAME/cryptoKeys/KEY_NAME
+# Encryption (REQUIRED)
+# You must provide a KMS key resource name for GKE cluster encryption
+database_encryption_key_name = "projects/my-project-id/locations/us-central1/keyRings/gke-keyring/cryptoKeys/gke-encryption-key" # Replace with your KMS key resource name
 
 # Node Taints Configuration
 # Taints for the main application node group (product workloads)

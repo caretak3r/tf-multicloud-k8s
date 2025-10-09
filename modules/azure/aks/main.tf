@@ -30,71 +30,14 @@ locals {
   ]
 }
 
-# Create Key Vault for encryption if not provided
-resource "azurerm_key_vault" "aks" {
-  count                       = var.key_vault_key_id == null ? 1 : 0
-  name                        = "${substr(replace(var.cluster_name, "-", ""), 0, 20)}kv"
-  location                    = var.location
-  resource_group_name         = var.resource_group_name
-  enabled_for_disk_encryption = true
-  tenant_id                   = data.azurerm_client_config.current.tenant_id
-  soft_delete_retention_days  = 7
-  purge_protection_enabled    = true
-  sku_name                    = "standard"
-
-  access_policy {
-    tenant_id = data.azurerm_client_config.current.tenant_id
-    object_id = data.azurerm_client_config.current.object_id
-
-    key_permissions = [
-      "Create",
-      "Get",
-      "List",
-      "Delete",
-      "Purge",
-      "Recover",
-      "Update",
-      "GetRotationPolicy",
-      "SetRotationPolicy"
-    ]
-  }
-
-  tags = var.tags
-}
-
-resource "azurerm_key_vault_key" "aks" {
-  count        = var.key_vault_key_id == null ? 1 : 0
-  name         = "${var.cluster_name}-key"
-  key_vault_id = azurerm_key_vault.aks[0].id
-  key_type     = "RSA"
-  key_size     = 2048
-
-  key_opts = [
-    "decrypt",
-    "encrypt",
-    "sign",
-    "unwrapKey",
-    "verify",
-    "wrapKey",
-  ]
-
-  rotation_policy {
-    automatic {
-      time_before_expiry = "P30D"
-    }
-    expire_after         = "P90D"
-    notify_before_expiry = "P29D"
-  }
-
-  tags = var.tags
-}
+# User must provide Key Vault key - no automatic key/vault creation
 
 # Create disk encryption set
 resource "azurerm_disk_encryption_set" "aks" {
   name                = "${var.cluster_name}-des"
   resource_group_name = var.resource_group_name
   location            = var.location
-  key_vault_key_id    = var.key_vault_key_id != null ? var.key_vault_key_id : azurerm_key_vault_key.aks[0].id
+  key_vault_key_id    = var.key_vault_key_id
 
   identity {
     type = "SystemAssigned"
@@ -105,7 +48,7 @@ resource "azurerm_disk_encryption_set" "aks" {
 
 # Grant disk encryption set access to key vault
 resource "azurerm_key_vault_access_policy" "disk_encryption_set" {
-  key_vault_id = var.key_vault_key_id != null ? split("/keys/", var.key_vault_key_id)[0] : azurerm_key_vault.aks[0].id
+  key_vault_id = split("/keys/", var.key_vault_key_id)[0]
 
   tenant_id = azurerm_disk_encryption_set.aks.identity[0].tenant_id
   object_id = azurerm_disk_encryption_set.aks.identity[0].principal_id
@@ -195,7 +138,7 @@ resource "azurerm_kubernetes_cluster" "main" {
 
   # Key Management Service for etcd encryption
   key_management_service {
-    key_vault_key_id         = var.key_vault_key_id != null ? var.key_vault_key_id : azurerm_key_vault_key.aks[0].id
+    key_vault_key_id         = var.key_vault_key_id
     key_vault_network_access = "Private"
   }
 

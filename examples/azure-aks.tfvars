@@ -37,6 +37,10 @@ enable_azure_policy       = true
 enable_microsoft_defender = true
 enable_workload_identity  = true
 
+# Encryption (REQUIRED)
+# You must provide a Key Vault key ID for AKS cluster encryption
+key_vault_key_id = "https://my-keyvault.vault.azure.net/keys/aks-encryption-key/12345678123456781234567812345678" # Replace with your Key Vault key ID
+
 # Container Registry (optional)
 container_registry_id = null # Set to ACR resource ID if needed
 

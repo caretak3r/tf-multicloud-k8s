@@ -151,9 +151,13 @@ variable "tags" {
 }
 
 variable "database_encryption_key_name" {
-  description = "The Cloud KMS key name to use for cluster database encryption. Format: projects/PROJECT_ID/locations/LOCATION/keyRings/RING_NAME/cryptoKeys/KEY_NAME. If not provided, a new key will be created."
+  description = "The Cloud KMS key name to use for cluster database encryption. This is required - the user must provide a KMS key. Format: projects/PROJECT_ID/locations/LOCATION/keyRings/RING_NAME/cryptoKeys/KEY_NAME."
   type        = string
-  default     = null
+
+  validation {
+    condition     = can(regex("^projects/.+/locations/.+/keyRings/.+/cryptoKeys/.+$", var.database_encryption_key_name))
+    error_message = "The database_encryption_key_name must be a valid GCP KMS key resource name in the format: projects/PROJECT_ID/locations/LOCATION/keyRings/RING_NAME/cryptoKeys/KEY_NAME."
+  }
 }
 
 variable "main_node_taints" {

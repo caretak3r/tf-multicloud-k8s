@@ -65,9 +65,13 @@ variable "service_cidr" {
 }
 
 variable "key_vault_key_id" {
-  description = "ID of existing Key Vault key for encryption. If not provided, a new key will be created."
+  description = "ID of existing Key Vault key for encryption. This is required - the user must provide a Key Vault key ID."
   type        = string
-  default     = null
+
+  validation {
+    condition     = can(regex("^https://.*\\.vault\\.azure\\.net/keys/", var.key_vault_key_id))
+    error_message = "The key_vault_key_id must be a valid Azure Key Vault key ID URL starting with 'https://' and containing '.vault.azure.net/keys/'."
+  }
 }
 
 variable "enable_azure_policy" {

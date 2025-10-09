@@ -1,39 +1,17 @@
-# Create KMS keyring and key if not provided
-resource "google_kms_key_ring" "gke" {
-  count    = var.database_encryption_key_name == null ? 1 : 0
-  name     = "${var.cluster_name}-keyring"
-  location = var.region
-  project  = var.project_id
-}
+# User must provide KMS key - no automatic key creation
 
-resource "google_kms_crypto_key" "gke" {
-  count           = var.database_encryption_key_name == null ? 1 : 0
-  name            = "${var.cluster_name}-key"
-  key_ring        = google_kms_key_ring.gke[0].id
-  rotation_period = "7776000s" # 90 days
-  purpose         = "ENCRYPT_DECRYPT"
-
-  lifecycle {
-    prevent_destroy = false
-  }
-}
-
-# Grant GKE service account access to the KMS key
+# Grant GKE service account access to the user-provided KMS key
 data "google_project" "project" {
   project_id = var.project_id
 }
 
 resource "google_kms_crypto_key_iam_member" "gke_sa" {
-  count         = var.database_encryption_key_name == null ? 1 : 0
-  crypto_key_id = google_kms_crypto_key.gke[0].id
+  crypto_key_id = var.database_encryption_key_name
   role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
   member        = "serviceAccount:service-${data.google_project.project.number}@container-engine-robot.iam.gserviceaccount.com"
 }
 
 locals {
-  # Determine which KMS key to use
-  kms_key_name = var.database_encryption_key_name != null ? var.database_encryption_key_name : (var.database_encryption_key_name == null ? google_kms_crypto_key.gke[0].id : null)
-
   # Map node configurations to match AWS c5.2xlarge (8 vCPU, 16 GB RAM)
   node_size_map = {
     small = {
@@ -249,7 +227,7 @@ module "gke" {
   database_encryption = [
     {
       state    = "ENCRYPTED"
-      key_name = local.kms_key_name
+      key_name = var.database_encryption_key_name
     }
   ]
 }

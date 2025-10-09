@@ -47,5 +47,5 @@ output "disk_encryption_set_id" {
 
 output "key_vault_key_id" {
   description = "The Key Vault key ID used for encryption"
-  value       = var.key_vault_key_id != null ? var.key_vault_key_id : azurerm_key_vault_key.aks[0].id
+  value       = var.key_vault_key_id
 }

@@ -92,9 +92,13 @@ variable "addon_versions" {
 }
 
 variable "kms_key_arn" {
-  description = "ARN of existing KMS key for EKS cluster encryption. If not provided, a new key will be created."
+  description = "ARN of existing KMS key for EKS cluster encryption. This is required - the user must provide a KMS key."
   type        = string
-  default     = null
+
+  validation {
+    condition     = can(regex("^arn:aws:kms:", var.kms_key_arn))
+    error_message = "The kms_key_arn must be a valid AWS KMS key ARN starting with 'arn:aws:kms:'."
+  }
 }
 
 variable "main_node_taints" {
