@@ -160,8 +160,8 @@ variable "container_registry_id" {
   default     = null
 }
 
-variable "workload_node_taints" {
-  description = "Taints for workload node pool"
+variable "main_node_taints" {
+  description = "Taints for main application node pool"
   type = list(object({
     key    = string
     value  = string

@@ -41,7 +41,7 @@ module "aks" {
   log_analytics_workspace_id = module.vpc.log_analytics_workspace_id
   enable_workload_identity   = var.enable_workload_identity
   container_registry_id      = var.container_registry_id
-  workload_node_taints       = var.workload_node_taints
+  main_node_taints           = var.main_node_taints
   environment                = var.environment
   tags                       = var.tags
 }

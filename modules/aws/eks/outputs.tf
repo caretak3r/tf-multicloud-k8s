@@ -49,14 +49,42 @@ output "node_iam_role_arn" {
   value       = aws_iam_role.nodes.arn
 }
 
-output "node_group_arn" {
-  description = "EKS node group ARN"
-  value       = aws_eks_node_group.main.arn
+output "main_node_group_arn" {
+  description = "EKS main application node group ARN"
+  value       = aws_eks_node_group.main_app.arn
 }
 
-output "node_group_status" {
-  description = "EKS node group status"
-  value       = aws_eks_node_group.main.status
+output "main_node_group_status" {
+  description = "EKS main application node group status"
+  value       = aws_eks_node_group.main_app.status
+}
+
+output "general_node_group_arn" {
+  description = "EKS general purpose node group ARN"
+  value       = aws_eks_node_group.general_purpose.arn
+}
+
+output "general_node_group_status" {
+  description = "EKS general purpose node group status"
+  value       = aws_eks_node_group.general_purpose.status
+}
+
+output "node_groups" {
+  description = "Information about all node groups"
+  value = {
+    main = {
+      arn    = aws_eks_node_group.main_app.arn
+      status = aws_eks_node_group.main_app.status
+      name   = aws_eks_node_group.main_app.node_group_name
+      type   = "main-application"
+    }
+    general = {
+      arn    = aws_eks_node_group.general_purpose.arn
+      status = aws_eks_node_group.general_purpose.status
+      name   = aws_eks_node_group.general_purpose.node_group_name
+      type   = "general-purpose"
+    }
+  }
 }
 
 output "oidc_issuer_url" {

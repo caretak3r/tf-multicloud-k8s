@@ -25,8 +25,8 @@ locals {
 
   node_config = local.node_size_map[var.node_size_config]
 
-  workload_node_taints_list = [
-    for taint in var.workload_node_taints : "${taint.key}=${taint.value}:${taint.effect}"
+  main_node_taints_list = [
+    for taint in var.main_node_taints : "${taint.key}=${taint.value}:${taint.effect}"
   ]
 }
 
@@ -232,9 +232,9 @@ resource "azurerm_kubernetes_cluster" "main" {
   tags = var.tags
 }
 
-# Additional node pool for workloads
-resource "azurerm_kubernetes_cluster_node_pool" "workload" {
-  name                  = "workload"
+# Main application node pool with taints
+resource "azurerm_kubernetes_cluster_node_pool" "main" {
+  name                  = "main"
   kubernetes_cluster_id = azurerm_kubernetes_cluster.main.id
   vm_size               = local.node_config.vm_size
   node_count            = local.node_config.node_count
@@ -245,17 +245,47 @@ resource "azurerm_kubernetes_cluster_node_pool" "workload" {
   os_disk_size_gb = local.node_config.os_disk_size_gb
 
   node_labels = {
-    "nodepool-type" = "workload"
+    "nodepool-type" = "main-application"
     "environment"   = var.environment
   }
 
-  node_taints = local.workload_node_taints_list
+  node_taints = local.main_node_taints_list
 
   upgrade_settings {
     max_surge = "10%"
   }
 
-  tags = var.tags
+  tags = merge(var.tags, {
+    NodePool = "main-application"
+  })
+}
+
+# General purpose node pool without taints
+resource "azurerm_kubernetes_cluster_node_pool" "general" {
+  name                  = "general"
+  kubernetes_cluster_id = azurerm_kubernetes_cluster.main.id
+  vm_size               = local.node_config.vm_size
+  node_count            = local.node_config.node_count
+  vnet_subnet_id        = var.subnet_id
+
+  min_count       = local.node_config.min_count
+  max_count       = local.node_config.max_count
+  os_disk_size_gb = local.node_config.os_disk_size_gb
+
+  node_labels = {
+    "nodepool-type" = "general-purpose"
+    "environment"   = var.environment
+  }
+
+  # No taints for general purpose node pool
+
+  upgrade_settings {
+    max_surge = "10%"
+  }
+
+  tags = merge(var.tags, {
+    NodePool = "general-purpose"
+  })
 }
 
 # Grant AKS identity access to ACR if provided

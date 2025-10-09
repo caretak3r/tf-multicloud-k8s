@@ -104,6 +104,7 @@ module "eks" {
   bastion_security_group_id = var.enable_bastion ? module.bastion[0].bastion_security_group_id : null
   node_ssh_key_name         = var.node_ssh_key_name
   addon_versions            = var.addon_versions
+  main_node_taints          = var.main_node_taints
 
   tags = var.tags
 

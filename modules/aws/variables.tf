@@ -164,6 +164,16 @@ variable "log_retention_in_days" {
 }
 
 
+variable "main_node_taints" {
+  description = "Taints for the main application node group"
+  type = list(object({
+    key    = string
+    value  = string
+    effect = string
+  }))
+  default = []
+}
+
 variable "tags" {
   description = "Tags to apply to resources"
   type        = map(string)

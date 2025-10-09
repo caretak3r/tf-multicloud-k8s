@@ -26,6 +26,7 @@ module "gke" {
   subnetwork_name     = module.vpc.private_subnet_names[0]
   pods_range_name     = "pods"
   services_range_name = "services"
+  main_node_taints    = var.main_node_taints
 
   labels = var.common_tags
 }

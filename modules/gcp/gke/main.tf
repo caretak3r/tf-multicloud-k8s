@@ -117,10 +117,40 @@ module "gke" {
   # Enable Dataplane V2 for better network performance
   datapath_provider = "ADVANCED_DATAPATH"
 
-  # Node pool configuration
+  # Node pool configuration - Two node pools: main (with taints) and general (without taints)
   node_pools = [
     {
-      name               = "${var.cluster_name}-node-pool"
+      name               = "${var.cluster_name}-main-pool"
+      machine_type       = local.node_config.machine_type
+      min_count          = local.node_config.min_count
+      max_count          = local.node_config.max_count
+      initial_node_count = local.node_config.initial_node_count
+      disk_size_gb       = local.node_config.disk_size_gb
+      disk_type          = local.node_config.disk_type
+      auto_repair        = true
+      auto_upgrade       = true
+
+      # Use spot instances for cost optimization (similar to AWS spot)
+      spot = var.node_size_config != "large"
+
+      # Enable workload identity for the node pool
+      workload_metadata_config = var.enable_workload_identity ? "GKE_METADATA" : "UNSPECIFIED"
+
+      # Preemptible instances for non-production
+      preemptible = false
+
+      # Node taints and labels
+      node_metadata = "GKE_METADATA_SERVER"
+
+      # Security settings
+      enable_secure_boot          = var.enable_shielded_nodes
+      enable_integrity_monitoring = var.enable_shielded_nodes
+
+      # Service account - will be created by the module
+      service_account = "default"
+    },
+    {
+      name               = "${var.cluster_name}-general-pool"
       machine_type       = local.node_config.machine_type
       min_count          = local.node_config.min_count
       max_count          = local.node_config.max_count
@@ -162,8 +192,21 @@ module "gke" {
   node_pools_labels = {
     all = merge(var.labels, {
       cluster_name = var.cluster_name
-      node_pool    = "default"
     })
+    "${var.cluster_name}-main-pool" = merge(var.labels, {
+      cluster_name = var.cluster_name
+      node_pool    = "main-application"
+    })
+    "${var.cluster_name}-general-pool" = merge(var.labels, {
+      cluster_name = var.cluster_name
+      node_pool    = "general-purpose"
+    })
+  }
+
+  # Node pool taints
+  node_pools_taints = {
+    "${var.cluster_name}-main-pool"    = var.main_node_taints
+    "${var.cluster_name}-general-pool" = []
   }
 
   # Node pool tags

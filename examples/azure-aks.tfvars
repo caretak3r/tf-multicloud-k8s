@@ -43,8 +43,17 @@ container_registry_id = null # Set to ACR resource ID if needed
 # Monitoring (optional)
 log_analytics_workspace_id = null # Set to existing workspace ID or leave null
 
-# Node Pool Configuration
-workload_node_taints = []
+# Node Taints Configuration
+# Taints for the main application node group (product workloads)
+# Example: Only pods with matching tolerations can be scheduled on these nodes
+main_node_taints = [
+  {
+    key    = "dedicated"
+    value  = "product"
+    effect = "NoSchedule"
+  }
+]
+# Leave empty for no taints: main_node_taints = []
 
 # Tags
 tags = {

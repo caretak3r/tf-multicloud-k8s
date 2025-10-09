@@ -273,10 +273,10 @@ resource "aws_eks_cluster" "main" {
   ]
 }
 
-# EKS Node Group
-resource "aws_eks_node_group" "main" {
+# EKS Node Group - Main Application
+resource "aws_eks_node_group" "main_app" {
   cluster_name    = aws_eks_cluster.main.name
-  node_group_name = "${var.cluster_name}-nodes"
+  node_group_name = "${var.cluster_name}-main-nodes"
   node_role_arn   = aws_iam_role.nodes.arn
   subnet_ids      = var.private_subnet_ids
   instance_types  = local.node_config.instance_types
@@ -294,6 +294,16 @@ resource "aws_eks_node_group" "main" {
     max_unavailable = 1
   }
 
+  # Apply taints for main application node group
+  dynamic "taint" {
+    for_each = var.main_node_taints
+    content {
+      key    = taint.value.key
+      value  = taint.value.value
+      effect = taint.value.effect
+    }
+  }
+
   # Only allow SSH if bastion is provided
   dynamic "remote_access" {
     for_each = var.bastion_security_group_id != null && var.node_ssh_key_name != null ? [1] : []
@@ -303,7 +313,52 @@ resource "aws_eks_node_group" "main" {
     }
   }
 
-  tags = var.tags
+  tags = merge(var.tags, {
+    NodeGroup = "main-application"
+  })
+
+  depends_on = [
+    aws_iam_role_policy_attachment.nodes_amazon_eks_worker_node_policy,
+    aws_iam_role_policy_attachment.nodes_amazon_eks_cni_policy,
+    aws_iam_role_policy_attachment.nodes_amazon_ec2_container_registry_read_only,
+  ]
+}
+
+# EKS Node Group - General Purpose
+resource "aws_eks_node_group" "general_purpose" {
+  cluster_name    = aws_eks_cluster.main.name
+  node_group_name = "${var.cluster_name}-general-nodes"
+  node_role_arn   = aws_iam_role.nodes.arn
+  subnet_ids      = var.private_subnet_ids
+  instance_types  = local.node_config.instance_types
+  disk_size       = local.node_config.disk_size
+  ami_type        = var.ami_type
+  capacity_type   = var.capacity_type
+
+  scaling_config {
+    desired_size = local.node_config.desired_size
+    max_size     = local.node_config.max_size
+    min_size     = local.node_config.min_size
+  }
+
+  update_config {
+    max_unavailable = 1
+  }
+
+  # No taints for general purpose node group
+
+  # Only allow SSH if bastion is provided
+  dynamic "remote_access" {
+    for_each = var.bastion_security_group_id != null && var.node_ssh_key_name != null ? [1] : []
+    content {
+      ec2_ssh_key               = var.node_ssh_key_name
+      source_security_group_ids = [var.bastion_security_group_id]
+    }
+  }
+
+  tags = merge(var.tags, {
+    NodeGroup = "general-purpose"
+  })
 
   depends_on = [
     aws_iam_role_policy_attachment.nodes_amazon_eks_worker_node_policy,
@@ -330,7 +385,7 @@ resource "aws_eks_addon" "coredns" {
 
   tags = var.tags
 
-  depends_on = [aws_eks_node_group.main]
+  depends_on = [aws_eks_node_group.main_app, aws_eks_node_group.general_purpose]
 }
 
 resource "aws_eks_addon" "kube_proxy" {

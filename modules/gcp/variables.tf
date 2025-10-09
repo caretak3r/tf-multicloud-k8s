@@ -50,6 +50,16 @@ variable "environment" {
   type        = string
 }
 
+variable "main_node_taints" {
+  description = "Taints for main application node pool"
+  type = list(object({
+    key    = string
+    value  = string
+    effect = string
+  }))
+  default = []
+}
+
 variable "common_tags" {
   description = "Common tags to apply to all resources"
   type        = map(string)

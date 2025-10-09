@@ -156,6 +156,16 @@ variable "database_encryption_key_name" {
   default     = null
 }
 
+variable "main_node_taints" {
+  description = "Taints for main application node pool"
+  type = list(object({
+    key    = string
+    value  = string
+    effect = string
+  }))
+  default = []
+}
+
 variable "labels" {
   description = "A map of labels to apply to all resources"
   type        = map(string)

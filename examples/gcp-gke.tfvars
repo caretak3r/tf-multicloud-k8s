@@ -66,6 +66,18 @@ enable_horizontal_pod_autoscaling = true
 # Encryption (optional)
 database_encryption_key_name = null # Format: projects/PROJECT_ID/locations/LOCATION/keyRings/RING_NAME/cryptoKeys/KEY_NAME
 
+# Node Taints Configuration
+# Taints for the main application node group (product workloads)
+# Example: Only pods with matching tolerations can be scheduled on these nodes
+main_node_taints = [
+  {
+    key    = "dedicated"
+    value  = "product"
+    effect = "NoSchedule"
+  }
+]
+# Leave empty for no taints: main_node_taints = []
+
 # Labels
 labels = {
   environment = "production"

@@ -51,6 +51,18 @@ addon_versions = {
   ebs_csi    = null
 }
 
+# Node Taints Configuration
+# Taints for the main application node group (product workloads)
+# Example: Only pods with matching tolerations can be scheduled on these nodes
+main_node_taints = [
+  {
+    key    = "dedicated"
+    value  = "product"
+    effect = "NoSchedule"
+  }
+]
+# Leave empty for no taints: main_node_taints = []
+
 # Tags
 tags = {
   Environment = "production"
