@@ -15,7 +15,7 @@ project_id = "sodium-hour-474721-r0"
 region = "us-east1"
 
 # A prefix used for naming resources, like the VPC network.
-name_prefix = "caretaker"
+name_prefix = "tf-gke"
 
 # --- Networking (VPC Module) ---
 
@@ -23,7 +23,7 @@ name_prefix = "caretaker"
 enable_vpc = true
 
 # The name for the VPC
-vpc_name = "gke-vpc"
+vpc_name = "tf-gke"
 
 # Create private subnets
 enable_private_subnets = true
@@ -31,7 +31,7 @@ enable_private_subnets = true
 # --- GKE Cluster (GKE Module) ---
 
 # A name for the GKE cluster.
-cluster_name = "my-gke-cluster"
+cluster_name = "tf-gke-cluster"
 
 # The size of the worker nodes. Options: "small", "medium", "large".
 node_size_config = "medium"
@@ -41,7 +41,7 @@ kubernetes_version = "1.32"
 
 # The database_encryption_key_name must be a valid GCP KMS key resource name in the format:
 # projects/PROJECT_ID/locations/LOCATION/keyRings/RING_NAME/cryptoKeys/KEY_NAME.
-database_encryption_key_name = "projects/sodium-hour-474721-r0/locations/us-east1/keyRings/default/cryptoKeys/gke/cryptoKeyVersions/1"
+database_encryption_key_name = "projects/sodium-hour-474721-r0/locations/us-east1/keyRings/default/cryptoKeys/gke"
 
 
 # --- Bastion Host (Instance Module) ---
@@ -50,7 +50,7 @@ database_encryption_key_name = "projects/sodium-hour-474721-r0/locations/us-east
 create_bastion = true
 
 # Set your public key to authorized_keys
-bastion_authorized_keys = ["value"]
+bastion_authorized_keys = ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJyE4AHbhD9dHDjzXL0UJ5NQqs/2pcOOc3NbMcMqjil/ rohit@rohits-MacBook-Pro.local"]
 
 
 # --- Labels ---

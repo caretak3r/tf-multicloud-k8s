@@ -46,9 +46,10 @@ locals {
 module "gke" {
   source = "terraform-google-modules/kubernetes-engine/google//modules/private-cluster"
 
-  project_id = var.project_id
-  name       = var.cluster_name
-  region     = var.region
+  project_id  = var.project_id
+  name        = var.cluster_name
+  region      = var.region
+  description = "gke private cluster"
 
   # Network configuration - assumes existing VPC
   network           = var.network_name
@@ -57,9 +58,12 @@ module "gke" {
   ip_range_services = var.services_range_name
 
   # Private cluster configuration
-  enable_private_endpoint = true
-  enable_private_nodes    = true
-  master_ipv4_cidr_block  = var.master_ipv4_cidr_block
+  enable_private_endpoint       = true
+  enable_private_nodes          = true
+  master_ipv4_cidr_block        = var.master_ipv4_cidr_block
+  deletion_protection           = false
+  deploy_using_private_endpoint = false
+
 
   # Kubernetes version and release channel
   kubernetes_version = var.kubernetes_version
@@ -68,6 +72,11 @@ module "gke" {
   # Monitoring and logging
   logging_service    = "logging.googleapis.com/kubernetes"
   monitoring_service = "monitoring.googleapis.com/kubernetes"
+
+  # Additional Cluster Options
+  http_load_balancing        = true # by default true needed for ingress
+  network_policy             = false
+  horizontal_pod_autoscaling = true
 
   # Node pool configuration
   node_pools = [
