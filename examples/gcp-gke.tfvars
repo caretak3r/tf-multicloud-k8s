@@ -3,17 +3,21 @@
 
 # General Configuration
 project_id = "my-project-id"
-region     = "us-central1"
+region     = "us-east1"
 
 # VPC Configuration
 create_vpc                   = true # Set to false to use existing VPC
 vpc_name                     = ""   # Required if create_vpc = false
 vpc_cidr                     = "10.0.0.0/16"
-regions                      = ["us-central1"]
+regions                      = ["us-east1"]
 enable_private_subnets       = true
-enable_public_subnets        = true
+enable_public_subnets        = false
 enable_nat_gateway           = true
 enable_private_google_access = true
+bastion_ssh_source_ranges    = ["0.0.0.0/0"]
+
+# Bastion host configuration
+bastion_subnet = ""
 
 # Existing VPC Configuration (when create_vpc = false)
 # vpc_name         = "existing-vpc"
@@ -39,13 +43,7 @@ enable_shielded_nodes       = true
 enable_workload_identity    = true
 enable_network_policy       = true
 
-# Master Authorized Networks (optional)
-master_authorized_networks = [
-  # {
-  #   cidr_block   = "0.0.0.0/0"
-  #   display_name = "All networks"
-  # }
-]
+
 
 # RBAC Configuration (optional)
 rbac_group_domain   = ""
@@ -65,7 +63,7 @@ enable_horizontal_pod_autoscaling = true
 
 # Encryption (REQUIRED)
 # You must provide a KMS key resource name for GKE cluster encryption
-database_encryption_key_name = "projects/my-project-id/locations/us-central1/keyRings/gke-keyring/cryptoKeys/gke-encryption-key" # Replace with your KMS key resource name
+database_encryption_key_name = "projects/my-project-id/locations/us-east1/keyRings/gke-keyring/cryptoKeys/gke-encryption-key" # Replace with your KMS key resource name
 
 # Node Taints Configuration
 # Taints for the main application node group (product workloads)

@@ -1,3 +1,8 @@
+variable "project_id" {
+  description = "GCP Project ID"
+  type        = string
+}
+
 variable "name_prefix" {
   description = "Prefix for all resource names"
   type        = string
@@ -24,7 +29,7 @@ variable "vpc_cidr" {
 variable "regions" {
   description = "List of regions for multi-region deployment"
   type        = list(string)
-  default     = ["us-central1"]
+  default     = ["us-east1"]
 }
 
 variable "enable_private_subnets" {
@@ -67,4 +72,10 @@ variable "public_subnet_ids" {
   description = "List of existing public subnet IDs (required when create_vpc = false)"
   type        = list(string)
   default     = []
+}
+
+variable "bastion_ssh_source_ranges" {
+  description = "List of source IP ranges to allow SSH access to the bastion host."
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
 }

@@ -21,7 +21,7 @@ func TestGCPGKEModule(t *testing.T) {
 		Vars: map[string]interface{}{
 			"cloud_provider":     "gcp",
 			"gcp_project_id":     projectID,
-			"gcp_region":         "us-central1",
+			"gcp_region":         "us-east1",
 			"cluster_name":       "test-gke-cluster",
 			"node_size_config":   "small",
 			"kubernetes_version": "1.28",

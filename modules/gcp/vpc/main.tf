@@ -1,13 +1,15 @@
 # Data source for existing VPC when create_vpc = false
 data "google_compute_network" "existing" {
-  count = var.create_vpc ? 0 : 1
-  name  = var.vpc_name
+  count   = var.create_vpc ? 0 : 1
+  name    = var.vpc_name
+  project = var.project_id
 }
 
 # VPC Network
 resource "google_compute_network" "vpc" {
   count = var.create_vpc ? 1 : 0
 
+  project                         = var.project_id
   name                            = "${var.name_prefix}-vpc"
   auto_create_subnetworks         = false
   enable_ula_internal_ipv6        = false
@@ -20,6 +22,7 @@ resource "google_compute_network" "vpc" {
 resource "google_compute_subnetwork" "private" {
   count = var.create_vpc && var.enable_private_subnets ? length(var.regions) : 0
 
+  project       = var.project_id
   name          = "${var.name_prefix}-private-${var.regions[count.index]}"
   network       = google_compute_network.vpc[0].id
   ip_cidr_range = cidrsubnet(var.vpc_cidr, 8, count.index + 1)
@@ -48,6 +51,7 @@ resource "google_compute_subnetwork" "private" {
 resource "google_compute_subnetwork" "public" {
   count = var.create_vpc && var.enable_public_subnets ? length(var.regions) : 0
 
+  project       = var.project_id
   name          = "${var.name_prefix}-public-${var.regions[count.index]}"
   network       = google_compute_network.vpc[0].id
   ip_cidr_range = cidrsubnet(var.vpc_cidr, 8, count.index + 100)
@@ -66,6 +70,7 @@ resource "google_compute_subnetwork" "public" {
 resource "google_compute_router" "nat_router" {
   count = var.create_vpc && var.enable_nat_gateway && var.enable_private_subnets ? length(var.regions) : 0
 
+  project = var.project_id
   name    = "${var.name_prefix}-nat-router-${var.regions[count.index]}"
   network = google_compute_network.vpc[0].id
   region  = var.regions[count.index]
@@ -79,6 +84,7 @@ resource "google_compute_router" "nat_router" {
 resource "google_compute_router_nat" "nat" {
   count = var.create_vpc && var.enable_nat_gateway && var.enable_private_subnets ? length(var.regions) : 0
 
+  project                            = var.project_id
   name                               = "${var.name_prefix}-nat-${var.regions[count.index]}"
   router                             = google_compute_router.nat_router[count.index].name
   region                             = var.regions[count.index]
@@ -100,6 +106,7 @@ resource "google_compute_router_nat" "nat" {
 resource "google_compute_firewall" "allow_internal" {
   count = var.create_vpc ? 1 : 0
 
+  project = var.project_id
   name    = "${var.name_prefix}-allow-internal"
   network = google_compute_network.vpc[0].name
 
@@ -125,6 +132,7 @@ resource "google_compute_firewall" "allow_internal" {
 resource "google_compute_firewall" "allow_health_checks" {
   count = var.create_vpc ? 1 : 0
 
+  project = var.project_id
   name    = "${var.name_prefix}-allow-health-checks"
   network = google_compute_network.vpc[0].name
 
@@ -136,10 +144,27 @@ resource "google_compute_firewall" "allow_health_checks" {
   priority      = 1000
 }
 
+resource "google_compute_firewall" "allow_ssh_to_bastion" {
+  count = var.create_vpc ? 1 : 0
+
+  project = var.project_id
+  name    = "${var.name_prefix}-allow-ssh-to-bastion"
+  network = google_compute_network.vpc[0].name
+
+  allow {
+    protocol = "tcp"
+    ports    = ["22"]
+  }
+
+  source_ranges = var.bastion_ssh_source_ranges
+  target_tags   = ["bastion"]
+}
+
 # Private Service Connection for Google APIs
 resource "google_compute_global_address" "private_service_connection" {
   count = var.create_vpc && var.enable_private_google_access ? 1 : 0
 
+  project       = var.project_id
   name          = "${var.name_prefix}-private-service-connection"
   purpose       = "VPC_PEERING"
   address_type  = "INTERNAL"

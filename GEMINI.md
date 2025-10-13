@@ -54,6 +54,16 @@ The project is structured using Terraform modules to separate concerns for each 
 *   **Environment-specific Configurations:** Use the `environments` directory to store `.tfvars` files for different deployment environments.
 *   **Variable Definitions:** All configurable options are defined in `variables.tf`.
 *   **Size-based Configurations:** The `node_size_config` variable allows for deploying clusters with different resource allocations (small, medium, large).
+*   If you make changes to the provider.tf files or required terraform version always test these changes (terraform init) PRIOR to making changes to any resource or modules code. This will keep you from breaking things further.
+*   When using open source terraform modules, please get the documentation + dependencies + inputs from the terraform module registry.
+* Ensure we use something consistent like name_prefix for all resources prefix standards and naming conventions.
+* Keep naming conventions across all modules similar. For example, the network resource for all modules is VPC, knowing that azure calls it's VPC a VNET, and so on. We want to use consistent variables names across all modules that are familiar and similar and easy to understand. Don't prefix things like region or cluster_name with cloud specific naming or prefixes.
+* Consistent module usage should look like this, where we always start with the source, and then the count (i.e the toggle to enable or disable the module)
+```
+module "bastion" {
+  source = "./bastion"
+  count  = var.enable_bastion ? 1 : 0
+```
 
 ### Committing Changes
 
