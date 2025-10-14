@@ -42,3 +42,10 @@ labels = {
   Team        = "devops"
   Owner       = "your-team@company.com"
 }
+
+# --- Firewall Settings ---
+
+# A list of TCP ports to open from the GKE master to the nodes.
+# This is critical for private clusters to allow webhooks and other
+# components to function correctly.
+gke_master_to_nodes_ports = ["10250", "443", "8443", "9443", "15017", "18081", "989"]

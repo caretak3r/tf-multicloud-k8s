@@ -180,7 +180,7 @@ resource "google_compute_firewall" "gke_master_to_nodes" {
 
   allow {
     protocol = "tcp"
-    ports    = ["443", "10250"]
+    ports    = var.gke_master_to_nodes_ports
   }
 
   source_ranges = [var.master_ipv4_cidr_block]

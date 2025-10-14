@@ -175,3 +175,9 @@ variable "labels" {
   type        = map(string)
   default     = {}
 }
+
+variable "gke_master_to_nodes_ports" {
+  description = "List of TCP ports to allow from GKE master to nodes."
+  type        = list(string)
+  default     = ["10250", "443", "8443", "9443", "15017", "18081", "989"]
+}
