@@ -31,7 +31,7 @@ locals {
       disk_type          = "pd-standard"
     }
     large = {
-      machine_type       = "n2-standard-8" # 8 vCPU, 32 GB - matches AWS c5.2xlarge
+      machine_type       = "n2-standard-8" # 8 vCPU, 32 GB
       min_count          = 3
       max_count          = 20
       initial_node_count = 5
@@ -63,20 +63,24 @@ module "gke" {
   master_ipv4_cidr_block        = var.master_ipv4_cidr_block
   deletion_protection           = false
   deploy_using_private_endpoint = false
-
+  dns_allow_external_traffic    = true
 
   # Kubernetes version and release channel
   kubernetes_version = var.kubernetes_version
   release_channel    = var.release_channel
 
   # Monitoring and logging
-  logging_service    = "logging.googleapis.com/kubernetes"
-  monitoring_service = "monitoring.googleapis.com/kubernetes"
+  logging_service                     = "logging.googleapis.com/kubernetes"
+  monitoring_service                  = "monitoring.googleapis.com/kubernetes"
+  security_posture_mode               = "BASIC"
+  security_posture_vulnerability_mode = "VULNERABILITY_BASIC"
 
   # Additional Cluster Options
-  http_load_balancing        = true # by default true needed for ingress
-  network_policy             = false
-  horizontal_pod_autoscaling = true
+  http_load_balancing             = true # by default true needed for ingress
+  network_policy                  = false
+  horizontal_pod_autoscaling      = false
+  enable_vertical_pod_autoscaling = false
+  remove_default_node_pool        = true
 
   # Node pool configuration
   node_pools = [
@@ -108,6 +112,10 @@ module "gke" {
   node_pools_oauth_scopes = {
     all = [
       "https://www.googleapis.com/auth/cloud-platform",
+      "https://www.googleapis.com/auth/devstorage.read_only",
+      "https://www.googleapis.com/auth/logging.write",
+      "https://www.googleapis.com/auth/monitoring",
+      "https://www.googleapis.com/auth/ndev.clouddns.readonly",
     ]
   }
 
@@ -176,5 +184,6 @@ resource "google_compute_firewall" "gke_master_to_nodes" {
   }
 
   source_ranges = [var.master_ipv4_cidr_block]
-  target_tags   = ["gke-${var.cluster_name}"]
+  #target_tags   = ["gke-${var.cluster_name}"]
+  target_tags = ["gke-node", "private"]
 }

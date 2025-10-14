@@ -54,6 +54,7 @@ The project is structured using Terraform modules to separate concerns for each 
 *   **Environment-specific Configurations:** Use the `environments` directory to store `.tfvars` files for different deployment environments.
 *   **Variable Definitions:** All configurable options are defined in `variables.tf`.
 *   **Size-based Configurations:** The `node_size_config` variable allows for deploying clusters with different resource allocations (small, medium, large).
+*   ALWAYS LOOK UP THE MODULE YOU ARE ABOUT TO USE (MODULE/RESOURCE/CONFIGURATIONS) navigate to the documentation URL and make sure you implement clauses and resources correctly. Try to be as complete as possible (minimally required values for configuration) and always use their configured defaults.
 *   If you make changes to the provider.tf files or required terraform version always test these changes (terraform init) PRIOR to making changes to any resource or modules code. This will keep you from breaking things further.
 *   When using open source terraform modules, please get the documentation + dependencies + inputs from the terraform module registry.
 * Ensure we use something consistent like name_prefix for all resources prefix standards and naming conventions.
@@ -64,6 +65,8 @@ module "bastion" {
   source = "./bastion"
   count  = var.enable_bastion ? 1 : 0
 ```
+* Always update the respective cloud environments `terraform.tfvars.example` file so the user knows what they can toggle on/off, but provide them with the least or minimal amount of things they need to run the infrastructure-as-code projects.
+* Ensure all cloud modules have implemented set of tags defined by whatever the user provides in their tfvars file.
 
 ### Committing Changes
 

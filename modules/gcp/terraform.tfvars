@@ -34,7 +34,7 @@ enable_private_subnets = true
 cluster_name = "tf-gke-cluster"
 
 # The size of the worker nodes. Options: "small", "medium", "large".
-node_size_config = "medium"
+node_size_config = "small"
 
 # The Kubernetes version for the GKE cluster.
 kubernetes_version = "1.32"

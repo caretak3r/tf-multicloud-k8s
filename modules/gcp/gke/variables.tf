@@ -38,7 +38,7 @@ variable "services_range_name" {
 variable "node_size_config" {
   description = "Node size configuration (small, medium, large)"
   type        = string
-  default     = "large"
+  default     = "small"
   validation {
     condition     = contains(["small", "medium", "large"], var.node_size_config)
     error_message = "Node size config must be one of: small, medium, large."
