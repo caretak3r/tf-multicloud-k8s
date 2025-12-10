@@ -1,189 +1,247 @@
-# User must provide KMS key - no automatic key creation
-
-# Grant GKE service account access to the user-provided KMS key
-data "google_project" "project" {
-  project_id = var.project_id
-}
-
-resource "google_kms_crypto_key_iam_member" "gke_sa" {
-  crypto_key_id = var.database_encryption_key_name
-  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
-  member        = "serviceAccount:service-${data.google_project.project.number}@container-engine-robot.iam.gserviceaccount.com"
-}
+# GKE Cluster using native Terraform resources
+# This module creates a fully private-like GKE cluster without using external modules
 
 locals {
-  # Map node configurations to match AWS c5.2xlarge (8 vCPU, 16 GB RAM)
-  node_size_map = {
-    small = {
-      machine_type       = "n2-standard-2" # 2 vCPU, 8 GB
-      min_count          = 1
-      max_count          = 5
-      initial_node_count = 2
-      disk_size_gb       = 50
-      disk_type          = "pd-standard"
-    }
-    medium = {
-      machine_type       = "n2-standard-4" # 4 vCPU, 16 GB
-      min_count          = 2
-      max_count          = 10
-      initial_node_count = 3
-      disk_size_gb       = 100
-      disk_type          = "pd-standard"
-    }
-    large = {
-      machine_type       = "n2-standard-8" # 8 vCPU, 32 GB
-      min_count          = 3
-      max_count          = 20
-      initial_node_count = 5
-      disk_size_gb       = 100
-      disk_type          = "pd-ssd"
-    }
-  }
+  # Default service account email if create_service_account is true
+  service_account_email = var.create_service_account ? google_service_account.gke_nodes[0].email : var.compute_engine_service_account
 
-  node_config = local.node_size_map[var.node_size_config]
+  # Determine if we should use dataplane v2
+  use_advanced_datapath = var.datapath_provider == "ADVANCED_DATAPATH"
 }
 
-module "gke" {
-  source = "terraform-google-modules/kubernetes-engine/google//modules/private-cluster"
+# Create service account for GKE nodes if needed
+resource "google_service_account" "gke_nodes" {
+  count      = var.create_service_account ? 1 : 0
+  account_id = "${var.name}-gke-nodes"
+  project    = var.project_id
 
-  project_id  = var.project_id
-  name        = var.cluster_name
-  region      = var.region
-  description = "gke private cluster"
-
-  # Network configuration - assumes existing VPC
-  network           = var.network_name
-  subnetwork        = var.subnetwork_name
-  ip_range_pods     = var.pods_range_name
-  ip_range_services = var.services_range_name
-
-  # Private cluster configuration
-  enable_private_endpoint       = true
-  enable_private_nodes          = true
-  master_ipv4_cidr_block        = var.master_ipv4_cidr_block
-  deletion_protection           = false
-  deploy_using_private_endpoint = false
-  dns_allow_external_traffic    = true
-
-  # Kubernetes version and release channel
-  kubernetes_version = var.kubernetes_version
-  release_channel    = var.release_channel
-
-  # Monitoring and logging
-  logging_service                     = "logging.googleapis.com/kubernetes"
-  monitoring_service                  = "monitoring.googleapis.com/kubernetes"
-  security_posture_mode               = "BASIC"
-  security_posture_vulnerability_mode = "VULNERABILITY_BASIC"
-
-  # Additional Cluster Options
-  http_load_balancing             = true # by default true needed for ingress
-  network_policy                  = false
-  horizontal_pod_autoscaling      = false
-  enable_vertical_pod_autoscaling = false
-  remove_default_node_pool        = true
-
-  # Node pool configuration
-  node_pools = [
-    {
-      name               = "${var.cluster_name}-main-pool"
-      machine_type       = local.node_config.machine_type
-      min_count          = local.node_config.min_count
-      max_count          = local.node_config.max_count
-      initial_node_count = local.node_config.initial_node_count
-      disk_size_gb       = local.node_config.disk_size_gb
-      disk_type          = local.node_config.disk_type
-      auto_repair        = true
-      auto_upgrade       = true
-    },
-    {
-      name               = "${var.cluster_name}-general-pool"
-      machine_type       = local.node_config.machine_type
-      min_count          = local.node_config.min_count
-      max_count          = local.node_config.max_count
-      initial_node_count = local.node_config.initial_node_count
-      disk_size_gb       = local.node_config.disk_size_gb
-      disk_type          = local.node_config.disk_type
-      auto_repair        = true
-      auto_upgrade       = true
-    }
-  ]
-
-  # Node pool OAuth scopes
-  node_pools_oauth_scopes = {
-    all = [
-      "https://www.googleapis.com/auth/cloud-platform",
-      "https://www.googleapis.com/auth/devstorage.read_only",
-      "https://www.googleapis.com/auth/logging.write",
-      "https://www.googleapis.com/auth/monitoring",
-      "https://www.googleapis.com/auth/ndev.clouddns.readonly",
-    ]
-  }
-
-  # Node pool labels
-  node_pools_labels = {
-    all = merge(var.labels, {
-      cluster_name = var.cluster_name
-    })
-    "${var.cluster_name}-main-pool" = merge(var.labels, {
-      cluster_name = var.cluster_name
-      node_pool    = "main-application"
-    })
-    "${var.cluster_name}-general-pool" = merge(var.labels, {
-      cluster_name = var.cluster_name
-      node_pool    = "general-purpose"
-    })
-  }
-
-  # Node pool taints
-  node_pools_taints = {
-    "${var.cluster_name}-main-pool"    = var.main_node_taints
-    "${var.cluster_name}-general-pool" = []
-  }
-
-  # Node pool tags
-  node_pools_tags = {
-    all = [
-      var.cluster_name,
-      "gke-node",
-      "private"
-    ]
-  }
-
-  # Cluster resource labels
-  cluster_resource_labels = merge(var.labels, {
-    cluster_name = var.cluster_name
-    environment  = "private"
-  })
-
-  # Database encryption with Cloud KMS
-  database_encryption = [
-    {
-      state    = "ENCRYPTED"
-      key_name = var.database_encryption_key_name
-    }
-  ]
+  display_name = "${var.name} GKE Nodes Service Account"
+  description  = "Service account for GKE nodes with minimal permissions"
 }
 
-# Create IAM binding for masters group if provided
-resource "google_project_iam_member" "cluster_admin" {
-  count   = var.masters_group_email != "" ? 1 : 0
+# Grant necessary permissions to the service account
+resource "google_project_iam_member" "gke_nodes_logging" {
+  count   = var.create_service_account ? 1 : 0
   project = var.project_id
-  role    = "roles/container.clusterAdmin"
-  member  = "group:${var.masters_group_email}"
+  role    = "roles/logging.logWriter"
+  member  = "serviceAccount:${google_service_account.gke_nodes[0].email}"
 }
 
-# Create firewall rules for private GKE access if needed
-resource "google_compute_firewall" "gke_master_to_nodes" {
-  name    = "${var.cluster_name}-master-to-nodes"
-  network = var.network_name
+resource "google_project_iam_member" "gke_nodes_monitoring" {
+  count   = var.create_service_account ? 1 : 0
   project = var.project_id
+  role    = "roles/monitoring.metricWriter"
+  member  = "serviceAccount:${google_service_account.gke_nodes[0].email}"
+}
 
-  allow {
-    protocol = "tcp"
-    ports    = var.gke_master_to_nodes_ports
+resource "google_project_iam_member" "gke_nodes_metrics" {
+  count   = var.create_service_account ? 1 : 0
+  project = var.project_id
+  role    = "roles/monitoring.viewer"
+  member  = "serviceAccount:${google_service_account.gke_nodes[0].email}"
+}
+
+# Grant registry access if needed
+resource "google_project_iam_member" "gke_nodes_registry" {
+  count   = var.create_service_account && var.grant_registry_access ? 1 : 0
+  project = length(var.registry_project_ids) > 0 ? var.registry_project_ids[0] : var.project_id
+  role    = "roles/storage.objectViewer"
+  member  = "serviceAccount:${google_service_account.gke_nodes[0].email}"
+}
+
+# Create GKE cluster
+resource "google_container_cluster" "gke_cluster" {
+  provider = google
+
+  project  = var.project_id
+  name     = var.name
+  location = var.region
+
+  description         = var.description
+  deletion_protection = var.deletion_protection
+
+  # Network configuration
+  network    = var.network
+  subnetwork = var.subnetwork
+
+  # GKE Private cluster configuration
+  private_cluster_config {
+    enable_private_endpoint = var.enable_private_endpoint
+    enable_private_nodes    = true
+    master_ipv4_cidr_block  = var.master_ipv4_cidr_block
   }
 
-  source_ranges = [var.master_ipv4_cidr_block]
-  #target_tags   = ["gke-${var.cluster_name}"]
-  target_tags = ["gke-node", "private"]
+  # IP allocation for pods and services
+  ip_allocation_policy {
+    cluster_secondary_range_name  = var.ip_range_pods
+    services_secondary_range_name = var.ip_range_services
+  }
+
+  # Release channel configuration
+  release_channel {
+    channel = var.release_channel
+  }
+
+  # Master authorized networks
+  dynamic "master_authorized_networks_config" {
+    for_each = length(var.master_authorized_networks) > 0 ? [1] : []
+    content {
+      dynamic "cidr_blocks" {
+        for_each = var.master_authorized_networks
+        content {
+          display_name = cidr_blocks.value.display_name
+          cidr_block   = cidr_blocks.value.cidr_block
+        }
+      }
+    }
+  }
+
+  # Addons configuration
+  addons_config {
+    http_load_balancing {
+      disabled = !var.http_load_balancing
+    }
+
+    horizontal_pod_autoscaling {
+      disabled = !var.horizontal_pod_autoscaling
+    }
+
+    network_policy_config {
+      disabled = local.use_advanced_datapath
+    }
+
+    gce_persistent_disk_csi_driver_config {
+      enabled = var.gce_pd_csi_driver
+    }
+
+    dns_cache_config {
+      enabled = var.dns_cache
+    }
+  }
+
+  # Network configuration
+  network_policy {
+    enabled = local.use_advanced_datapath ? false : true
+  }
+
+  # Dataplane provider
+  datapath_provider = var.datapath_provider
+
+  # Default max pods per node
+  default_max_pods_per_node = var.default_max_pods_per_node
+
+  # Database encryption
+  database_encryption {
+    state    = var.database_encryption[0].state
+    key_name = var.database_encryption[0].key_name
+  }
+
+  # Shielded nodes
+  remove_default_node_pool = true
+  initial_node_count       = 1
+
+  # Resource labels
+  resource_labels = var.cluster_resource_labels
+
+  # Workload Identity
+  workload_identity_config {
+    workload_pool = "${var.project_id}.svc.id.goog"
+  }
+
+  # Logging and monitoring
+  logging_service    = var.logging_service
+  monitoring_service = var.monitoring_service
+
+  # Vertical pod autoscaling
+  vertical_pod_autoscaling {
+    enabled = var.enable_vertical_pod_autoscaling
+  }
+
+  # Node configuration
+  node_config {
+    service_account = local.service_account_email
+
+    # Set OAuth scopes
+    oauth_scopes = var.node_pools_oauth_scopes["all"]
+
+    # Set metadata
+    metadata = var.node_pools_metadata["all"]
+
+    # Image type
+    image_type = var.sandbox_enabled ? "COS_CONTAINERD" : "COS_CONTAINERD"
+
+    # Disk configuration
+    disk_size_gb = 100
+    disk_type    = "pd-standard"
+
+    # Labels and tags
+    labels = var.node_pools_labels["all"]
+    tags   = var.node_pools_tags["all"]
+
+    # Taints
+    dynamic "taint" {
+      for_each = var.node_pools_taints["all"]
+      content {
+        key    = taint.value.key
+        value  = taint.value.value
+        effect = taint.value.effect
+      }
+    }
+  }
+}
+
+# Create default node pool
+resource "google_container_node_pool" "default_node_pool" {
+  project  = var.project_id
+  name     = "default-pool"
+  location = var.region
+  cluster  = google_container_cluster.gke_cluster.name
+
+  # Node count
+  initial_node_count = 1
+
+  # Node configuration
+  node_config {
+    machine_type    = "e2-medium"
+    service_account = local.service_account_email
+
+    # Set OAuth scopes
+    oauth_scopes = var.node_pools_oauth_scopes["all"]
+
+    # Set metadata
+    metadata = var.node_pools_metadata["all"]
+
+    # Image type
+    image_type = var.sandbox_enabled ? "COS_CONTAINERD" : "COS_CONTAINERD"
+
+    # Disk configuration
+    disk_size_gb = 100
+    disk_type    = "pd-standard"
+
+    # Labels and tags
+    labels = var.node_pools_labels["all"]
+    tags   = var.node_pools_tags["all"]
+
+    # Taints
+    dynamic "taint" {
+      for_each = var.node_pools_taints["all"]
+      content {
+        key    = taint.value.key
+        value  = taint.value.value
+        effect = taint.value.effect
+      }
+    }
+  }
+
+  # Auto-upgrade and auto-repair
+  management {
+    auto_repair  = true
+    auto_upgrade = true
+  }
+
+  # Node pool upgrade settings
+  upgrade_settings {
+    max_surge       = 1
+    max_unavailable = 0
+  }
 }

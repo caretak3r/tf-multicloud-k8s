@@ -17,8 +17,9 @@ variable "name_prefix" {
 }
 
 variable "vpc_name" {
-  description = "Name of the VPC"
+  description = "Name of the VPC (name when creating VPC or existing VPC name when enable_vpc=false)"
   type        = string
+  default     = ""
 }
 
 variable "vpc_cidr" {
@@ -44,26 +45,10 @@ variable "kubernetes_version" {
   default     = "1.32"
 }
 
-variable "node_size_config" {
-  description = "Node size configuration (small, medium, large)"
-  type        = string
-  default     = "small"
-}
-
 variable "environment" {
   description = "Environment name (e.g., dev, staging, prod)"
   type        = string
   default     = "dev"
-}
-
-variable "main_node_taints" {
-  description = "Taints for main application node pool"
-  type = list(object({
-    key    = string
-    value  = string
-    effect = string
-  }))
-  default = []
 }
 
 variable "tags" {
@@ -81,7 +66,7 @@ variable "bastion_ssh_source_ranges" {
 variable "enable_vpc" {
   description = "Whether to create a new VPC or use an existing one."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "enable_gke" {
@@ -210,12 +195,6 @@ variable "database_encryption_key_name" {
   default     = ""
 }
 
-variable "labels" {
-  description = "Labels to apply to all resources"
-  type        = map(string)
-  default     = {}
-}
-
 variable "rbac_group_domain" {
   description = "The domain for RBAC group"
   type        = string
@@ -230,6 +209,26 @@ variable "regions" {
 
 variable "bastion_subnet" {
   description = "The name of the subnet to deploy the bastion host into."
+  type        = string
+  default     = ""
+}
+
+
+
+variable "subnetwork" {
+  description = "The name of an existing subnet to use for the GKE cluster (when enable_vpc=false)."
+  type        = string
+  default     = ""
+}
+
+variable "existing_pods_range" {
+  description = "The name of an existing secondary IP range for pods (when not creating VPC)."
+  type        = string
+  default     = ""
+}
+
+variable "existing_services_range" {
+  description = "The name of an existing secondary IP range for services (when not creating VPC)."
   type        = string
   default     = ""
 }

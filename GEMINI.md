@@ -67,6 +67,7 @@ module "bastion" {
 ```
 * Always update the respective cloud environments `terraform.tfvars.example` file so the user knows what they can toggle on/off, but provide them with the least or minimal amount of things they need to run the infrastructure-as-code projects.
 * Ensure all cloud modules have implemented set of tags defined by whatever the user provides in their tfvars file.
+* Ensure we retain the wording or description or variable for different cloud providers: GCP uses location instead of region, like AWS. AWS uses region instead of location. We want to keep these things and things like this unchanged to not confuse the end user.
 
 ### Committing Changes
 

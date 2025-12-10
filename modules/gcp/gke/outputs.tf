@@ -1,81 +1,120 @@
+# Outputs for GKE cluster module
+
 output "cluster_id" {
-  description = "GKE cluster ID"
-  value       = module.gke.cluster_id
+  description = "Cluster ID"
+  value       = google_container_cluster.gke_cluster.id
 }
 
-output "cluster_name" {
-  description = "GKE cluster name"
-  value       = module.gke.name
+output "name" {
+  description = "Cluster name"
+  value       = google_container_cluster.gke_cluster.name
 }
 
-output "cluster_endpoint" {
-  description = "Endpoint for GKE control plane"
-  value       = module.gke.endpoint
-  sensitive   = true
+output "type" {
+  description = "Cluster type (regional / zonal)"
+  value       = "regional"
 }
 
-output "cluster_ca_certificate" {
-  description = "Base64 encoded public certificate for GKE cluster"
-  value       = module.gke.ca_certificate
-  sensitive   = true
+output "location" {
+  description = "Cluster location (region if regional cluster, zone if zonal cluster)"
+  value       = google_container_cluster.gke_cluster.location
 }
 
-output "cluster_master_version" {
-  description = "Current master version of the GKE cluster"
-  value       = module.gke.master_version
+output "region" {
+  description = "Cluster region"
+  value       = var.region
 }
 
-output "cluster_region" {
-  description = "GKE cluster region"
-  value       = module.gke.region
-}
-
-output "cluster_zones" {
+output "zones" {
   description = "List of zones in which the cluster resides"
-  value       = module.gke.zones
+  value       = var.zones
 }
 
-output "service_account" {
-  description = "The service account used by the node pool"
-  value       = module.gke.service_account
+output "endpoint" {
+  sensitive   = true
+  description = "Cluster endpoint"
+  value       = google_container_cluster.gke_cluster.endpoint
 }
 
-output "network_name" {
-  description = "The name of the VPC network"
-  value       = var.network_name
+output "endpoint_dns" {
+  description = "Cluster endpoint DNS"
+  value       = ""
 }
 
-output "subnet_name" {
-  description = "The name of the subnet"
-  value       = var.subnetwork_name
+output "min_master_version" {
+  description = "Minimum master kubernetes version"
+  value       = google_container_cluster.gke_cluster.min_master_version
+}
+
+output "logging_service" {
+  description = "Logging service used"
+  value       = google_container_cluster.gke_cluster.logging_service
+}
+
+output "monitoring_service" {
+  description = "Monitoring service used"
+  value       = google_container_cluster.gke_cluster.monitoring_service
 }
 
 output "master_authorized_networks_config" {
-  description = "Master authorized networks configuration"
-  value       = module.gke.master_authorized_networks_config
+  description = "Networks from which access to master is permitted"
+  value       = var.master_authorized_networks
+}
+
+output "master_version" {
+  description = "Current master kubernetes version"
+  value       = google_container_cluster.gke_cluster.master_version
+}
+
+output "ca_certificate" {
+  sensitive   = true
+  description = "Cluster ca certificate (base64 encoded)"
+  value       = google_container_cluster.gke_cluster.master_auth[0].cluster_ca_certificate
+}
+
+output "network_policy_enabled" {
+  description = "Whether network policy enabled"
+  value       = local.use_advanced_datapath ? false : true
+}
+
+output "http_load_balancing_enabled" {
+  description = "Whether http load balancing enabled"
+  value       = var.http_load_balancing
+}
+
+output "horizontal_pod_autoscaling_enabled" {
+  description = "Whether horizontal pod autoscaling enabled"
+  value       = var.horizontal_pod_autoscaling
 }
 
 output "node_pools_names" {
   description = "List of node pools names"
-  value       = module.gke.node_pools_names
+  value       = [google_container_node_pool.default_node_pool.name]
 }
 
 output "node_pools_versions" {
-  description = "Node pools versions"
-  value       = module.gke.node_pools_versions
+  description = "Node pool versions by node pool name"
+  value = {
+    (google_container_node_pool.default_node_pool.name) = google_container_node_pool.default_node_pool.version
+  }
 }
 
-output "cluster_identity_namespace" {
-  description = "Workload Identity namespace"
-  value       = var.enable_workload_identity ? "${var.project_id}.svc.id.goog" : null
+output "service_account" {
+  description = "The service account to default running nodes as if not overridden in `node_pools`."
+  value       = local.service_account_email
 }
 
-output "get_credentials_command" {
-  description = "gcloud command to get cluster credentials"
-  value       = "gcloud container clusters get-credentials ${module.gke.name} --region ${module.gke.region} --project ${var.project_id} --internal-ip"
+output "master_ipv4_cidr_block" {
+  description = "The IP range in CIDR notation used for the hosted master network"
+  value       = var.master_ipv4_cidr_block
 }
 
-output "kubectl_config_command" {
-  description = "Command to configure kubectl"
-  value       = "kubectl config use-context gke_${var.project_id}_${module.gke.region}_${module.gke.name}"
+output "peering_name" {
+  description = "The name of the peering between this cluster and the Google owned VPC."
+  value       = ""
+}
+
+output "enable_mesh_certificates" {
+  description = "Mesh certificate configuration value"
+  value       = var.enable_mesh_certificates
 }

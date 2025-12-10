@@ -1,0 +1,58 @@
+# Example configuration for bastion host only (no GKE)
+
+# --- General ---
+
+# IMPORTANT: You must replace this with your actual GCP Project ID.
+project_id = "your-project-id"
+
+# The GCP region to deploy resources in.
+region = "us-east1"
+
+# A prefix used for naming resources.
+name_prefix = "my-infra"
+
+# --- Networking (VPC Module) ---
+
+# Create VPC for bastion
+enable_vpc = true
+
+# The name for the VPC
+vpc_name = "my-vpc"
+vpc_cidr = "10.0.0.0/16"
+
+# Create private subnets
+enable_private_subnets = true
+
+# --- GKE Cluster (GKE Module) ---
+
+# Don't create GKE cluster
+enable_gke = false
+
+# Still need to provide these variables even when GKE is disabled (for validation)
+cluster_name = "placeholder-cluster"
+kubernetes_version = "1.32"
+database_encryption_key_name = ""
+pods_range_name = "placeholder-pods"
+services_range_name = "placeholder-services"
+master_ipv4_cidr_block = "172.16.0.0/28"
+
+# --- Bastion Host (Instance Module) ---
+
+# Create bastion host
+create_bastion = true
+
+# Set your public key to access the bastion
+bastion_authorized_keys = [
+  "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJyE4AHbhD9dHDjzXL0UJ5NQqs/2pcOOc3NbMcMqjil/ your-email@domain.com"
+]
+
+# Optionally specify which subnet to deploy bastion into
+bastion_subnet = ""
+
+# --- Labels ---
+
+# Optional tags to apply to all resources
+tags = {
+  environment = "development"
+  team        = "infrastructure"
+}

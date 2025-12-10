@@ -1,0 +1,50 @@
+# Example configuration without creating VPC
+# Uses existing network resources
+
+# --- General ---
+
+# IMPORTANT: You must replace this with your actual GCP Project ID.
+project_id = "your-project-id"
+
+# The GCP region to deploy resources in.
+region = "us-east1"
+
+# A prefix used for naming resources.
+name_prefix = "my-gke"
+
+# --- Networking (VPC Module) ---
+
+# Disable VPC creation - use existing network
+enable_vpc = false
+
+# Specify existing network resources
+vpc_name = "my-existing-vpc"
+subnetwork = "my-existing-subnet"
+existing_pods_range = "my-pods-range"
+existing_services_range = "my-services-range"
+
+# --- GKE Cluster (GKE Module) ---
+
+# A name for the GKE cluster.
+cluster_name = "my-gke-cluster"
+
+# The Kubernetes version for the GKE cluster.
+kubernetes_version = "1.32"
+
+# The database_encryption_key_name must be a valid GCP KMS key resource name
+database_encryption_key_name = ""
+
+# --- Bastion Host (Instance Module) ---
+
+# Don't create bastion host
+create_bastion = false
+
+bastion_authorized_keys = []
+
+# --- Labels ---
+
+# Optional tags to apply to all resources
+tags = {
+  environment = "development"
+  team        = "platform"
+}
